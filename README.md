@@ -6,6 +6,7 @@ It summarizes study materials, answers questions like a personal tutor, and gene
 ✅ Live Streamlit Demo: https://hamdy-ai-tutor.streamlit.app  
 
 Supports:
+
 ✅ PDF files  
 ✅ Website articles  
 ✅ Web search  
@@ -57,11 +58,11 @@ When answering questions or generating quizzes:
 
 ## 🔧 Tools & Technologies Used
 
-| Component | Technology |
-|-----------|------------|
+| Component | Technology / Model |
+|-----------|-------------------|
 | UI & Frontend | Streamlit |
-| LLM / AI | Groq |
-| Embeddings (optional) | Cohere |
+| LLM / AI | **Groq – gpt-oss-120b** |
+| Embeddings | **Cohere – cohere-multilingual-v3.0** |
 | Retrieval & pipelines | LangChain |
 | Vector Database | **FAISS** |
 | PDF + Text Processing | PyPDF |
