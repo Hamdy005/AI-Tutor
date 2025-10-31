@@ -76,7 +76,7 @@ The system uses a **Hybrid RAG pipeline** to automatically choose the best data 
 ## 🚀 Run Locally
 
 ```bash
-git clone <your-repo-url>
-cd <project-folder>
+git clone https://github.com/Hamdy005/AI-Tutor
+cd AI-Tutor
 pip install -r requirements.txt
 streamlit run app.py
