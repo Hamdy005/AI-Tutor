@@ -3,8 +3,6 @@
 AI Tutor is an interactive learning assistant built with Streamlit.  
 It summarizes study materials, answers questions like a personal tutor, and generates quizzes (MCQ + True/False) with explanations.
 
-✅ Live Streamlit Demo: https://hamdy-ai-tutor.streamlit.app  
-
 Supports:
 
 ✅ PDF files  
@@ -22,6 +20,7 @@ Supports:
 | Cohere API Key | Embeddings for higher accuracy | ✅ Optional | https://dashboard.cohere.com | ✅ Free trial available |
 
 Enter your API keys directly in the Streamlit sidebar.
+✅ Live Streamlit Demo: https://hamdy-ai-tutor.streamlit.app  
 
 ---
 
