@@ -1,7 +1,6 @@
 import streamlit as st 
 
 def display_quiz(quiz, source_prefix):
-
     st.header("📝 Take the Quiz")
 
     if not quiz:
@@ -18,31 +17,30 @@ def display_quiz(quiz, source_prefix):
         default_choice = "Choose the correct answer"
 
         for i, q in enumerate(mcqs):
-
             key = f"{source_prefix}_mcq_{i}"
 
             current_selection = st.session_state.user_answers.get(key, default_choice)
             options = [default_choice] + q.get("options", [])
-
+            
             questions_cnt += 1
             default_index = options.index(current_selection) if current_selection in options else 0
             
-            select = st.radio(
-
-                f"{questions_cnt}- {q["question"]}",
+            # Create the radio button
+            selected_option = st.radio(
+                f"{questions_cnt}- {q['question']}",
                 options=options,
                 index=default_index,
-                key=key,
-
+                key=f"radio_{key}"  
             )
-            st.session_state.user_answers[key] = select
+            
+            # Update session state with the selection
+            st.session_state.user_answers[key] = selected_option
 
         # True/False Questions
         st.subheader("True/False Questions")
         tfs = quiz.get("tf", [])
 
         for i, q in enumerate(tfs):
-
             key = f"{source_prefix}_tf_{i}"
             
             current_selection = st.session_state.user_answers.get(key, default_choice)
@@ -51,21 +49,24 @@ def display_quiz(quiz, source_prefix):
             default_index = options.index(current_selection) if current_selection in options else 0
             
             questions_cnt += 1
-            select = st.radio(
-
-                f"{questions_cnt}- {q["question"]}",
+            selected_option = st.radio(
+                f"{questions_cnt}- {q['question']}",
                 options=options,
                 index=default_index,
-                key=key,
-
+                key=f"radio_{key}"  
             )
-            st.session_state.user_answers[key] = select
 
-        # Submit Button inside the form
+            st.session_state.user_answers[key] = selected_option
+
+        # Submit Button
         submitted = st.form_submit_button("📤 Submit Quiz")
         
         if submitted:
-            calculate_score(mcqs, tfs, source_prefix)
+            st.session_state[f"show_results_{source_prefix}"] = True
+            st.rerun()
+    
+    if st.session_state.get(f"show_results_{source_prefix}", False):
+        calculate_score(mcqs, tfs, source_prefix)
 
 def calculate_score(mcqs, tfs, source_prefix):
 

@@ -274,14 +274,17 @@ with tabs[1]:
 
 # ==================== 📝 Tab 3 ====================
 with tabs[2]:
+
     st.header("📝 Quiz Generator")
+
+    if 'user_answers' not in st.session_state:
+        st.session_state.user_answers = {}
 
     default_index = 0
 
     if "last_quiz_source" in st.session_state:
         mapping = {"web": 0, "pdf": 1, "url": 2}
         default_index = mapping.get(st.session_state.last_quiz_source, 0)
-
     else:
         if "pdf_quiz" in st.session_state:
             default_index = 1
@@ -318,8 +321,22 @@ with tabs[2]:
     if st.button("⚙️ Generate a Quiz"):
         try:
             with st.spinner("🧩 Generating a quiz... This might take a while"):
+                
+                current_prefix = ""
 
-                st.session_state.user_answers = {}
+                if quiz_source == "🌍 From the Web":
+                    current_prefix = "web"
+
+                elif quiz_source == "📘 From My PDF File":
+                    current_prefix = "pdf" 
+                    
+                elif quiz_source == "🔗 From My URL Article":
+                    current_prefix = "url"
+                
+                # Remove only answers for the current quiz prefix
+                keys_to_remove = [key for key in st.session_state.user_answers.keys() if key.startswith(current_prefix)]
+                for key in keys_to_remove:
+                    del st.session_state.user_answers[key]
 
                 if quiz_source == "🌍 From the Web":
                     if not topic:
@@ -327,58 +344,45 @@ with tabs[2]:
                         st.stop()
 
                     st.session_state.web_quiz = smart_quiz_generator(
-
-                        topic_title = topic,
-                        difficulty = difficulty,
-                        mcq_count = num_mcq,
-                        tf_count = num_tf,
-
+                        topic_title=topic,
+                        difficulty=difficulty,
+                        mcq_count=num_mcq,
+                        tf_count=num_tf,
                     )
-                    
                     st.success("✅ Web quiz generated successfully!")
                     st.session_state.last_quiz_source = "web"
 
                 elif quiz_source == "📘 From My PDF File":
-
                     chunks = st.session_state.get("pdf_chunks")
-
                     if not chunks:
                         st.warning("⚠️ Please add your PDF material first.")
                         st.stop()
 
                     st.session_state.pdf_quiz = smart_quiz_generator(
-
-                        difficulty = difficulty,
-                        mcq_count = num_mcq,
-                        tf_count = num_tf,
-                        vector_db = st.session_state.get("pdf_vectors"),
-                        summary = st.session_state.get("pdf_summary"),
-                        chunks = chunks
-
+                        difficulty=difficulty,
+                        mcq_count=num_mcq,
+                        tf_count=num_tf,
+                        vector_db=st.session_state.get("pdf_vectors"),
+                        summary=st.session_state.get("pdf_summary"),
+                        chunks=chunks
                     )
-
                     st.success("✅ PDF quiz generated successfully!")
                     st.session_state.last_quiz_source = "pdf"
 
                 elif quiz_source == "🔗 From My URL Article":
-
                     chunks = st.session_state.get("url_chunks")
-
                     if not chunks:
                         st.warning("⚠️ Please add your URL article first.")
                         st.stop()
 
                     st.session_state.url_quiz = smart_quiz_generator(
-
-                        difficulty = difficulty,
-                        mcq_count = num_mcq,
-                        tf_count = num_tf,
-                        vector_db = st.session_state.get("url_vectors"),
-                        summary = st.session_state.get("url_summary"),
-                        chunks = chunks
-
+                        difficulty=difficulty,
+                        mcq_count=num_mcq,
+                        tf_count=num_tf,
+                        vector_db=st.session_state.get("url_vectors"),
+                        summary=st.session_state.get("url_summary"),
+                        chunks=chunks
                     )
-
                     st.success("✅ URL quiz generated successfully!")
                     st.session_state.last_quiz_source = "url"
 
