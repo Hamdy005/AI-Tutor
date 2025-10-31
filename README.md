@@ -3,6 +3,8 @@
 AI Tutor is an interactive learning assistant built with Streamlit.  
 It summarizes study materials, answers questions like a personal tutor, and generates quizzes (MCQ + True/False) with explanations.
 
+✅ Live Streamlit Demo: https://hamdy-ai-tutor.streamlit.app  
+
 Supports:
 ✅ PDF files  
 ✅ Website articles  
@@ -11,21 +13,24 @@ Supports:
 
 ---
 
+## 🔐 Requirements (Before Running)
+
+| API | Purpose | Required? | Link | Free Trial |
+|-----|---------|-----------|------|------------|
+| Groq API Key | LLM for answers, summaries, quizzes | ✅ Yes | https://console.groq.com | ✅ Free trial available |
+| Cohere API Key | Embeddings for higher accuracy | ✅ Optional | https://dashboard.cohere.com | ✅ Free trial available |
+
+Enter your API keys directly in the Streamlit sidebar.
+
+---
+
 ## ✅ Key Features
 
 ✔ Upload a PDF or URL and get a clean educational summary  
 ✔ Ask questions with source-aware answers  
-✔ Smart quiz generator:
-- Multiple-choice + True/False
-- Correct answers + explanations
-
-✔ Intelligent Source Handling
-| Available Data | AI Uses |
-|----------------|--------|
-| Embeddings | Most accurate retrieval |
-| Summary only | Uses summary |
-| Only text chunks | Uses start/end chunks |
-| No material | Searches the web automatically |
+✔ Quiz generator (MCQ + True/False) with explanations  
+✔ Saves processing time and shows the source used  
+✔ Can run locally or online using Streamlit Cloud  
 
 ---
 
@@ -34,32 +39,36 @@ Supports:
 The AI doesn’t rely only on uploaded material.  
 It can **combine your study material with online knowledge** for the most accurate answer.
 
-When you ask a question or generate a quiz:
+When answering questions or generating quizzes:
 
-✅ If you uploaded material:
-- The AI uses your PDF/URL first  
-- Then it can enhance answers using:
+✅ If uploaded material exists:
+- Uses your PDF/URL first  
+- Can enhance answers using:
   - Wikipedia  
   - ArXiv research papers  
   - DuckDuckGo Search (DDGS)
 
 ✅ If no material is uploaded:
-- It automatically switches to pure web search  
-- You can still ask questions or generate quizzes  
-- Results come from Wikipedia, ArXiv, and DDGS
-
-This ensures accurate answers even with limited or no study files.
+- AI automatically searches the web  
+- Uses Wikipedia, ArXiv, and DDGS  
+- You can still ask questions and generate quizzes
 
 ---
 
-## 🔐 Requirements
+## 🔧 Tools & Technologies Used
 
-| API | Purpose | Required? | Link | Free Trial |
-|-----|---------|-----------|------|------------|
-| Groq API Key | Runs LLM for answers, summaries, quizzes | ✅ Yes | https://console.groq.com | ✅ Free trial available |
-| Cohere API Key | Generates embeddings for more accurate retrieval | ✅ Optional (recommended) | https://dashboard.cohere.com | ✅ Free trial available |
+| Component | Technology |
+|-----------|------------|
+| UI & Frontend | Streamlit |
+| LLM / AI | Groq |
+| Embeddings (optional) | Cohere |
+| Retrieval & pipelines | LangChain |
+| Vector Database | **FAISS** |
+| PDF + Text Processing | PyPDF |
+| Web Search | Wikipedia, DDGS, ArXiv |
+| Storage | Local files / vector database |
 
-💡 Add your API keys directly from the Streamlit sidebar.
+The system uses a **multi-agent RAG pipeline** to decide the best data source.
 
 ---
 
