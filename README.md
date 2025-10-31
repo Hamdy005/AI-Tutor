@@ -5,13 +5,12 @@ It summarizes study materials, answers questions like a personal tutor, and gene
 
 Supports:
 
-✅ PDF files  
+**✅ PDF files**
 ✅ Website articles  
 ✅ Web search  
 ✅ **Hybrid RAG system** for accuracy (material + online sources)
 
 ---
-
 ## 🔐 Requirements (Before Running)
 
 | API | Purpose | Required? | Link | Free Trial |
@@ -19,8 +18,8 @@ Supports:
 | Groq API Key | LLM for answers, summaries, quizzes | ✅ Yes | https://console.groq.com | ✅ Free trial available |
 | Cohere API Key | Embeddings for higher accuracy | ✅ Optional | https://dashboard.cohere.com | ✅ Free trial available |
 
-Enter your API keys directly in the Streamlit sidebar.
-✅ Live Streamlit Demo: https://hamdy-ai-tutor.streamlit.app  
+Enter your API keys directly in the Streamlit sidebar.  
+**✅ Live Streamlit Demo: https://hamdy-ai-tutor.streamlit.app**
 
 ---
 
