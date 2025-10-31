@@ -34,26 +34,28 @@ Enter your API keys directly in the Streamlit sidebar.
 
 ---
 
-## 🌐 Smart Web Search + Material Combination (Hybrid RAG)
+---
 
-The AI doesn’t rely only on uploaded material.  
-It can **combine your study material with online knowledge (Hybrid RAG)** for the most accurate answer.
+## 🧠 How the AI Works (Simple Explanation)
 
-When answering questions or generating quizzes:
+The app uses a **multi-agent Hybrid RAG system** to pick the best information source.
 
-✅ If uploaded material exists:
-- Uses your PDF/URL first  
-- Can enhance answers using:
+✅ **If you upload a PDF or a URL:**
+- The app extracts text and splits it into small learning chunks
+- You can generate a summary or embeddings
+
+**When you ask a question or generate a quiz:**
+1. ✅ If embeddings exist → AI retrieves the exact related information  
+2. ✅ If only a summary exists → AI uses the summary  
+3. ✅ If neither exist → AI uses random chunks from the start and end of the material  
+
+✅ **If no material is added:**
+- The AI searches the web using:
   - Wikipedia  
   - ArXiv research papers  
   - DuckDuckGo Search (DDGS)
 
-✅ If no material is uploaded:
-- AI automatically searches the web  
-- Uses Wikipedia, ArXiv, and DDGS  
-- You can still ask questions and generate quizzes
-
----
+This ensures accurate answers even when material is limited.
 
 ## 🔧 Tools & Technologies Used
 
