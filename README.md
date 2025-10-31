@@ -5,10 +5,10 @@ It summarizes study materials, answers questions like a personal tutor, and gene
 
 Supports:
 
-## ✅ PDF files
-## ✅ Website articles** 
-## ✅ Web search**
-## ✅ Hybrid RAG system for accuracy (material + online sources)
+✅ PDF files
+✅ Website articles
+✅ Web searc
+**✅ Hybrid RAG system for accuracy**  (material + online sources)
 
 ---
 ## 🔐 Requirements (Before Running)
