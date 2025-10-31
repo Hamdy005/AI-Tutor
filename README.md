@@ -61,7 +61,7 @@ When answering questions or generating quizzes:
 | Component | Technology / Model |
 |-----------|-------------------|
 | UI & Frontend | Streamlit |
-| LLM / AI | **Groq – gpt-oss-120b** |
+| LLM / AI | **Groq / openai – openai/gpt-oss-120b** |
 | Embeddings | **Cohere – cohere-multilingual-v3.0** |
 | Retrieval & pipelines | LangChain |
 | Vector Database | **FAISS** |
