@@ -34,8 +34,6 @@ Enter your API keys directly in the Streamlit sidebar.
 
 ---
 
----
-
 ## 🧠 How the AI Works (Simple Explanation)
 
 The app uses a **multi-agent Hybrid RAG system** to pick the best information source.
