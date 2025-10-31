@@ -1,4 +1,4 @@
-# 🎓 AI Tutor for Students
+# 🎓 AI Tutor for Students (Hybrid RAG)
 
 AI Tutor is an interactive learning assistant built with Streamlit.  
 It summarizes study materials, answers questions like a personal tutor, and generates quizzes (MCQ + True/False) with explanations.
@@ -10,7 +10,7 @@ Supports:
 ✅ PDF files  
 ✅ Website articles  
 ✅ Web search  
-✅ Multi-agent RAG system for accuracy
+✅ **Hybrid RAG system** for accuracy (material + online sources)
 
 ---
 
@@ -35,10 +35,10 @@ Enter your API keys directly in the Streamlit sidebar.
 
 ---
 
-## 🌐 Smart Web Search + Material Combination
+## 🌐 Smart Web Search + Material Combination (Hybrid RAG)
 
 The AI doesn’t rely only on uploaded material.  
-It can **combine your study material with online knowledge** for the most accurate answer.
+It can **combine your study material with online knowledge (Hybrid RAG)** for the most accurate answer.
 
 When answering questions or generating quizzes:
 
@@ -69,7 +69,7 @@ When answering questions or generating quizzes:
 | Web Search | Wikipedia, DDGS, ArXiv |
 | Storage | Local files / vector database |
 
-The system uses a **multi-agent RAG pipeline** to decide the best data source.
+The system uses a **Hybrid RAG pipeline** to automatically choose the best data source.
 
 ---
 
