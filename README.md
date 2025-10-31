@@ -7,7 +7,8 @@ Supports:
 
 ✅ PDF files
 ✅ Website articles
-✅ Web searc
+✅ Web search
+
 **✅ Hybrid RAG system for accuracy**  (material + online sources)
 
 ---
