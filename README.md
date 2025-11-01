@@ -1,3 +1,6 @@
+<img width="1915" height="926" alt="image" src="https://github.com/user-attachments/assets/6d67f9c2-2412-401d-954e-6f57a7dd7b44" />
+
+
 # 🎓 AI Tutor for Students (Hybrid RAG)
 
 AI Tutor is an interactive learning assistant built with Streamlit.  
