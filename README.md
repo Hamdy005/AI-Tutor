@@ -18,8 +18,8 @@ It summarizes study materials, answers questions like a personal tutor, and gene
 
 | API | Purpose | Required? | Link | Free Trial |
 |-----|---------|-----------|------|------------|
-| Groq API Key | LLM for answers, summaries, quizzes | Yes | [Groq Console](https://console.groq.com) | Free trial available |
-| Cohere API Key | Embeddings for higher accuracy | Optional | [Cohere Dashboard](https://dashboard.cohere.com) | Free trial available |
+| Groq API Key | LLM for answers, summaries, quizzes | ✅ Yes | [Groq Console](https://console.groq.com) | ✅ Free trial available |
+| Cohere API Key | Embeddings for higher accuracy | ✅ Optional | [Cohere Dashboard](https://dashboard.cohere.com) | ✅ Free trial available |
 
 Enter your API keys directly in the Streamlit sidebar.  
 Live Streamlit Demo: [https://hamdy-ai-tutor.streamlit.app](https://hamdy-ai-tutor.streamlit.app)
@@ -58,7 +58,7 @@ The app uses a **multi-agent Hybrid RAG system** to pick the best information so
   - ArXiv research papers  
   - DuckDuckGo Search (DDGS)
 
-This ensures accurate answers even when material is limited.
+✅ This ensures accurate answers even when material is limited.
 
 ---
 
