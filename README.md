@@ -1,4 +1,4 @@
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/c75996d2-0b5b-4752-98b3-7da972968814" />
+<img width="1915" height="926" alt="image" src="https://github.com/user-attachments/assets/add6869e-8593-44e5-9ae9-b86dafc2db05" />
 
 # 🎓 AI Tutor for Students (Hybrid RAG)
 
