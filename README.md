@@ -3,6 +3,20 @@
 AI Tutor is an interactive learning assistant built with Streamlit.  
 It summarizes study materials, answers questions like a personal tutor, and generates quizzes (MCQ + True/False) with explanations.
 
+## 📚 Supported Sources
+
+- PDF files
+- Website articles
+- Web search
+- Hybrid RAG system for accuracy (material + online sources)
+
+## 🔐 Requirements (Before Running)
+
+| API | Purpose | Required? | Link | Free Trial |
+|-----|---------|-----------|------|------------|
+| Groq API Key | LLM for answers, summaries, quizzes | ✅ Yes | [Groq Console](https://console.groq.com) | ✅ Free Personal Key available |
+| Cohere API Key | Embeddings for higher accuracy | ✅ Optional | [Cohere Dashboard](https://dashboard.cohere.com) | ✅ Free Personal Key available |
+
 ## 📸 Screenshots
 
 ### 🏠 Home Page
@@ -25,40 +39,14 @@ It summarizes study materials, answers questions like a personal tutor, and gene
   <img src="https://github.com/user-attachments/assets/fc06dc60-369a-42b9-8a8e-46e5a3c83b0a" width="800"/>
 </p>
 
-### 🧠 Quiz Solution View
 <p align="center">
   <img src="https://github.com/user-attachments/assets/7fc8ae5a-8223-48f9-a908-b986107043dd" width="800"/>
 </p>
 
-### 📚 Full Quiz Answers
 <p align="center">
   <img src="https://github.com/user-attachments/assets/b7a886bf-faf1-4e97-aa9a-0eb8873d9f14" width="800"/>
 </p>
 
-### Application Interface
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/2cfce22a-659b-4183-ad4a-666d6eea8d79" width="800"/>
-</p>
-
-### Additional Views
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/2410801b-7d1b-41dd-8a9b-8bf69bfe872a" width="800"/>
-  <img src="https://github.com/user-attachments/assets/66398d16-3af7-47f0-9827-07762e1d3897" width="800"/>
-</p>
-
-## 📚 Supported Sources
-
-- PDF files
-- Website articles
-- Web search
-- Hybrid RAG system for accuracy (material + online sources)
-
-## 🔐 Requirements (Before Running)
-
-| API | Purpose | Required? | Link | Free Trial |
-|-----|---------|-----------|------|------------|
-| Groq API Key | LLM for answers, summaries, quizzes | ✅ Yes | [Groq Console](https://console.groq.com) | ✅ Free Personal Key available |
-| Cohere API Key | Embeddings for higher accuracy | ✅ Optional | [Cohere Dashboard](https://dashboard.cohere.com) | ✅ Free Personal Key available |
 
 Enter your API keys directly in the Streamlit sidebar.  
 **Live Streamlit Demo:** [https://hamdy-ai-tutor.streamlit.app](https://hamdy-ai-tutor.streamlit.app)
