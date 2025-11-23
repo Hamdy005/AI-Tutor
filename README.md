@@ -35,6 +35,10 @@ Enter your API keys directly in the Streamlit sidebar.
   <img src="https://github.com/user-attachments/assets/f15c27fe-a759-4abf-9591-d828d69e83ca" width="800"/>
 </p>
 
+<p align="center">
+  <img width="1920" height="1080" src="https://github.com/user-attachments/assets/dc52f94d-cdb5-40b6-900c-41180a326bac" />
+</p>
+
 ### ❓ Ask the Tutor (Q&A)
 <p align="center">
   <img src="https://github.com/user-attachments/assets/d21c3c17-5347-44fb-a225-6ba4b94be207" width="800"/>
