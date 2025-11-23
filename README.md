@@ -17,6 +17,12 @@ It summarizes study materials, answers questions like a personal tutor, and gene
 | Groq API Key | LLM for answers, summaries, quizzes | ✅ Yes | [Groq Console](https://console.groq.com) | ✅ Free Personal Key available |
 | Cohere API Key | Embeddings for higher accuracy | ✅ Optional | [Cohere Dashboard](https://dashboard.cohere.com) | ✅ Free Personal Key available |
 
+
+Enter your API keys directly in the Streamlit sidebar.  
+**Live Streamlit Demo:** [https://hamdy-ai-tutor.streamlit.app](https://hamdy-ai-tutor.streamlit.app)
+
+---
+
 ## 📸 Screenshots
 
 ### 🏠 Home Page
@@ -46,10 +52,6 @@ It summarizes study materials, answers questions like a personal tutor, and gene
 <p align="center">
   <img src="https://github.com/user-attachments/assets/b7a886bf-faf1-4e97-aa9a-0eb8873d9f14" width="800"/>
 </p>
-
-
-Enter your API keys directly in the Streamlit sidebar.  
-**Live Streamlit Demo:** [https://hamdy-ai-tutor.streamlit.app](https://hamdy-ai-tutor.streamlit.app)
 
 ---
 
