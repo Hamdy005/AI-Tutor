@@ -23,9 +23,6 @@ with st.sidebar:
     st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
     os.environ['GROQ_API_KEY'] = st.text_input('Enter your "Groq API key" to use the LLM:', type='password', key = 'GROQ_KEY')
 
-    st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
-    os.environ['COHERE_API_KEY'] = st.text_input('Enter your "Cohere API key" to Embed the Material (Optional):', type='password', key = 'COHERE_KEY')
-
 
 # 📂 Tabs
 tabs = st.tabs(["📚 Upload & Summarize", "💬 Ask Tutor", "📝 Quiz Generator"])
@@ -46,7 +43,7 @@ with tabs[0]:
         # 📄 PDF Upload
         if pdf_file:
             try:
-                with st.spinner("📖 Processing PDF file..."):
+                with st.spinner("📖 Preparing your study material..."):
                     pdf_text = text_from_pdf(pdf_file)
 
                     # Reset previous session data when new material is uploaded
@@ -56,45 +53,29 @@ with tabs[0]:
                         st.session_state.last_pdf = pdf_file.name
 
                     st.session_state.pdf_chunks = chunk_text(pdf_text)
-                    st.success(f"✅ Uploaded: {pdf_file.name}")
+                    
+                    # Auto-embed for better results
+                    if "pdf_vectors" not in st.session_state:
+                        st.session_state.pdf_vectors = create_vector_db(st.session_state.pdf_chunks)
+                
+                st.success(f"✅ Material prepared: {pdf_file.name}")
 
-                # Buttons
-                col1, col2 = st.columns([1, 1])
-                with col1:
-                    summarize_clicked = st.button("Summarize Content")
-
-                with col2:
-                    embed_clicked = st.button("Embed for better results")
-
-                embed_status_placeholder = st.empty()
+                # Summarize Button
+                summarize_clicked = st.button("Summarize Content")
                 summary_placeholder = st.empty()
 
                 if summarize_clicked:
-                    with st.spinner("Summarizing..."):
+                    start_time = time.process_time()
+                    combined_text = "\n".join(st.session_state.pdf_chunks)
+                    st.session_state.pdf_summary = summarizer(combined_text)
 
-                        start_time = time.process_time()
-                        combined_text = "\n".join(st.session_state.pdf_chunks)
-                        st.session_state.pdf_summary = summarizer(combined_text)
-
-                        end_time = time.process_time()
-                        st.session_state.pdf_summary_time = end_time - start_time
+                    end_time = time.process_time()
+                    st.session_state.pdf_summary_time = end_time - start_time
 
                     st.success("✅ Summary generated!")
                     st.rerun()
 
-
-                if embed_clicked:
-                    with st.spinner("Embedding your material..."):
-                        st.session_state.pdf_vectors = create_vector_db(st.session_state.pdf_chunks)
-                    st.rerun()
-
-
-                # Displaying Summary and Embedding Message
-                with embed_status_placeholder:
-                    if "pdf_vectors" in st.session_state:
-                        st.success("✅ Embeddings created successfully!")
-
-
+                # Displaying Summary
                 with summary_placeholder:
                     if "pdf_summary" in st.session_state:
                         with st.expander("🧾 View PDF Summary", expanded = True):
@@ -111,7 +92,7 @@ with tabs[0]:
 
         if url and validators.url(url):
             try:
-                with st.spinner("🌐 Processing URL..."):
+                with st.spinner("📖 Preparing your study material..."):
 
                     # Reset previous session data when new URL is entered
                     if "last_url" not in st.session_state or st.session_state.last_url != url:
@@ -122,54 +103,34 @@ with tabs[0]:
 
                         url_data = scrap_website(url)
                         st.session_state.url_chunks = chunk_text(url_data, chunk_size=600, chunk_overlap=100)
-                        st.success("✅ URL Uploaded successfully.")
+                    
+                    # Auto-embed for better results
+                    if "url_vectors" not in st.session_state:
+                        st.session_state.url_vectors = create_vector_db(st.session_state.url_chunks)
+                
+                st.success("✅ Material prepared successfully!")
 
-                # Buttons
-                col1, col2 = st.columns([1, 1])
-                with col1:
-                    summarize_clicked = st.button("Summarize Content")
-
-                with col2:
-                    embed_clicked = st.button("Embed for better results")
-
-                                                
-                embed_status_placeholder = st.empty()
+                # Summarize Button
+                summarize_clicked = st.button("Summarize Content")
                 summary_placeholder = st.empty()
 
                 if summarize_clicked:
-                    with st.spinner("Summarizing..."):
+                    start_time = time.process_time()
+                    combined_text = "\n".join(st.session_state.url_chunks)
+                    st.session_state.url_summary = summarizer(combined_text)
 
-                        start_time = time.process_time()
-                        combined_text = "\n".join(st.session_state.url_chunks)
-                        st.session_state.url_summary = summarizer(combined_text)
-
-                        end_time = time.process_time()
-                        st.session_state.url_summary_time = end_time - start_time
+                    end_time = time.process_time()
+                    st.session_state.url_summary_time = end_time - start_time
 
                     st.success("✅ Summary generated!")
                     st.rerun()
 
-
-                if embed_clicked:
-
-                    with st.spinner("Embedding your material..."):
-                        st.session_state.url_vectors = create_vector_db(st.session_state.url_chunks)
-
-                    st.rerun()
-
-                # Displaying Summary and Embedding Message
-
-                with embed_status_placeholder:
-                    if "url_vectors" in st.session_state:
-                        st.success("✅ Embeddings created successfully!")
-
-
+                # Displaying Summary
                 with summary_placeholder:
                     if "url_summary" in st.session_state:
                         with st.expander("🧾 View URL Summary", expanded = True):
                             st.write(st.session_state.url_summary)
                             st.caption(f"🕒 Time Taken: {st.session_state.url_summary_time:.2f} seconds")
-
 
             except Exception as e:
                 st.error(f"❌ Error reading or processing file: {e}")

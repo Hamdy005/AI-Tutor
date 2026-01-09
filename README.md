@@ -15,7 +15,6 @@ It summarizes study materials, answers questions like a personal tutor, and gene
 | API | Purpose | Required? | Link | Free Trial |
 |-----|---------|-----------|------|------------|
 | Groq API Key | LLM for answers, summaries, quizzes | ✅ Yes | [Groq Console](https://console.groq.com) | ✅ Free Personal Key available |
-| Cohere API Key | Embeddings for higher accuracy | ✅ Optional | [Cohere Dashboard](https://dashboard.cohere.com) | ✅ Free Personal Key available |
 
 
 Enter your API keys directly in the Streamlit sidebar.  
@@ -98,9 +97,9 @@ The app uses a **multi-agent Hybrid RAG system** to pick the best information so
 |-----------|-------------------|
 | UI & Frontend | Streamlit |
 | LLM / AI | openai/gpt-oss-120b |
-| Embeddings | cohere-multilingual-v3.0 |
+| Embeddings | sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 |
 | Retrieval & Pipelines | LangChain |
-| Vector Database | FAISS |
+| Vector Database | ChromaDB |
 | PDF + Text Processing | PyPDF |
 | Web Search | Wikipedia, DDGS, ArXiv |
 | Storage | Local files / vector database |

@@ -1,6 +1,6 @@
-import os, random
+import os, random, uuid
 import streamlit as st
-from langchain_cohere import CohereEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
 from langchain.agents import create_openai_tools_agent, AgentExecutor
@@ -11,15 +11,14 @@ from langchain_core.tools import Tool
 from langchain_community.utilities import ArxivAPIWrapper, WikipediaAPIWrapper
 from langchain_groq import ChatGroq
 
+@st.cache_resource(show_spinner=False)
 def get_embedder():
-
-    cohere_api_key = os.environ.get("COHERE_API_KEY", "")
-
-    if not cohere_api_key:
-        raise ValueError("Cohere API key not found. Please set it in Streamlit sidebar.")
-    
-    os.environ['COHERE_API_KEY'] = cohere_api_key
-    return CohereEmbeddings(model = 'embed-multilingual-v3.0')
+    """Returns a cached HuggingFace embeddings model."""
+    return HuggingFaceEmbeddings(
+        model_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+        model_kwargs={'device': 'cpu'},
+        encode_kwargs={'normalize_embeddings': True}
+    )
 
 
 def get_llm():
@@ -33,10 +32,10 @@ def get_llm():
     return ChatGroq(model = 'openai/gpt-oss-120b')
 
 def create_vector_db(chunks):
-
+    """Creates a FAISS vector database from text chunks."""
+    
     embedder = get_embedder()
-
-    vector_db = FAISS.from_texts(chunks, embedder)
+    vector_db = FAISS.from_texts(texts=chunks, embedding=embedder)
     return vector_db
 
 
@@ -111,58 +110,27 @@ def rag_answer(query, chunks = [], summaries = '', vector_db = None, memory = No
     prompt = rag_prompt()
     tools = web_search_agents()
     llm = get_llm()
-
-    if vector_db:
-
-        vectordb_tool = create_retriever_tool(
-            
-            vector_db.as_retriever(),
-            name = "knowledge_retriever",
-            description = """
-            
-                Retrieves relevant educational material, notes, and explanations from the knowledge base 
-                to help the tutor answer conceptual or factual questions accurately.
-                
-            """)
+    
+    # Creating the Vector Database Retriever tool
+    vectordb_tool = create_retriever_tool(
+        vector_db.as_retriever(),
+        name = "knowledge_retriever",
+        description = """
+            Retrieves relevant educational material, notes, and explanations from the knowledge base 
+            to help the tutor answer conceptual or factual questions accurately.     
+        """
+    )
         
-        tools.append(vectordb_tool)
-
-    elif summaries:
-
-        summary_tool = Tool(
-
-            name = "summary_retriever",
-            func = lambda q: f"Reference summaries:\n{summaries}",
-            description = "Provides summarized understanding of the uploaded materials."
-        )
-
-        tools.append(summary_tool)
-
-    elif chunks:   
-
-        random_chunks = random.sample(chunks, min(15, len(chunks) - 2)) + [chunks[0], chunks[-1]]
-        random.shuffle(random_chunks)
-
-        chunks_tool = Tool(
-
-            name = "chunks_retriever",
-            func = lambda q: f"Raw extracted chunks:\n\n{random_chunks}",
-            description = "Provides raw text from the uploaded materials for reasoning."
-
-        )
-
-        tools.append(chunks_tool)
+    tools.append(vectordb_tool)
 
     tools_agent = create_openai_tools_agent(llm, tools, prompt)
     agent_executor = AgentExecutor(
-        
         agent = tools_agent,
         tools = tools,
         memory = memory, 
         verbose = True,
         return_intermediate_steps = False,
         handle_parsing_errors = True 
-
     )
 
     response = agent_executor.invoke({"input": query})
