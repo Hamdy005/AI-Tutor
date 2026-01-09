@@ -7,8 +7,9 @@ streamlit==1.45.0
 langchain==0.3.25
 langchain-community==0.3.4
 langchain-groq
-langchain-cohere
+langchain-huggingface
 faiss-cpu==1.12.0
+sentence-transformers
 
 PyPDF2==3.0.1
 unstructured==0.18.15
