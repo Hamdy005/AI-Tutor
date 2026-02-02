@@ -77,9 +77,7 @@ The app uses a **multi-agent Hybrid RAG system** to pick the best information so
 - You can generate a summary or embeddings
 
 **When you ask a question or generate a quiz:**
-1. If embeddings exist → AI retrieves the related information  
-2. If only a summary exists → AI uses the summary  
-3. If neither exist → AI uses random chunks from the start and end of the material  
+AI retrieves the related information using RAG-based embeddings.
 
 **If no material is added:**
 - The AI searches the web using:
