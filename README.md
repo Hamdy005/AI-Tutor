@@ -26,7 +26,7 @@ Enter your API keys directly in the Streamlit sidebar.
 
 ### 🏠 Home Page
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/dc721ff2-5657-41f6-b75d-ab2d33370bf8" width="800"/>
+  <img src="https://github.com/user-attachments/assets/132212b6-6a14-4031-898d-cd527455cb3c" width="800"/>
 </p>
 
 ### 📝 Summary Generator
