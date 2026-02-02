@@ -26,36 +26,39 @@ Enter your API keys directly in the Streamlit sidebar.
 
 ### 🏠 Home Page
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/132212b6-6a14-4031-898d-cd527455cb3c" width="800"/>
+  <img src="https://github.com/user-attachments/assets/e83ea2d2-9e1a-44aa-9a4b-6c7165ca230b" width="800"/>
 </p>
 
 ### 📝 Summary Generator
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/f15c27fe-a759-4abf-9591-d828d69e83ca" width="800"/>
+  <img src="https://github.com/user-attachments/assets/8520a7cc-09df-44f5-8f93-82711041761e" width="800"/>
 </p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/dc52f94d-cdb5-40b6-900c-41180a326bac" width = "800" />
+  <img src="https://github.com/user-attachments/assets/2a484af3-b699-4758-979d-86f9c46f0dfc" width = "800" />
 </p>
 
 ### ❓ Ask the Tutor (Q&A)
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/d21c3c17-5347-44fb-a225-6ba4b94be207" width="800"/>
+  <img src="https://github.com/user-attachments/assets/63723ca7-01ff-4f23-8e26-5669ef34ae6c" width="800"/>
+</p>
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/b550d0a6-6f99-4d51-bc03-ef7b69f3a2d4" width="800"/>
 </p>
 
 ### 🧪 Quiz Generator
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/fc06dc60-369a-42b9-8a8e-46e5a3c83b0a" width="800"/>
+  <img src="https://github.com/user-attachments/assets/b0b712ac-fe1a-400c-910c-35fc4ed56b10" width="800"/>
 </p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/7fc8ae5a-8223-48f9-a908-b986107043dd" width="800"/>
+  <img src="https://github.com/user-attachments/assets/a1319577-2b4f-46e8-9a00-1c36f5808177" width="800"/>
 </p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/b7a886bf-faf1-4e97-aa9a-0eb8873d9f14" width="800"/>
+  <img src="https://github.com/user-attachments/assets/57e03070-b33b-4718-b1fc-d3a9fc5932a4" width="800"/>
 </p>
-
 ---
 
 ## ✨ Key Features
