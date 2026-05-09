@@ -14,10 +14,10 @@ It summarizes study materials, answers questions like a personal tutor, and gene
 
 | API | Purpose | Required? | Link | Free Trial |
 |-----|---------|-----------|------|------------|
-| Groq API Key | LLM for answers, summaries, quizzes | ✅ Yes | [Groq Console](https://console.groq.com) | ✅ Free Personal Key available |
+| OpenRouter API Key | LLM for answers, summaries, quizzes | ✅ Yes | [OpenRouter](https://openrouter.ai/keys) | ✅ Free / Paid plans |
 
 
-Enter your API keys directly in the Streamlit sidebar.  
+Create a `config.env` file in the project root and add your API key.  
 **Live Streamlit Demo:** [https://hamdy-ai-tutor.streamlit.app](https://hamdy-ai-tutor.streamlit.app)
 
 ---
@@ -114,4 +114,5 @@ The system uses a **Hybrid RAG pipeline** to automatically choose the best data 
 git clone https://github.com/Hamdy005/AI-Tutor
 cd AI-Tutor
 pip install -r requirements.txt
+cp config.env.example config.env
 streamlit run app.py

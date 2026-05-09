@@ -1,0 +1,177 @@
+import json
+import random
+import re
+from typing import Optional
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain
+from langchain.agents import create_openai_tools_agent, AgentExecutor
+from langchain_core.tools import create_retriever_tool
+
+from src.rag.rag import get_llm, web_search_tools, SupabaseRetriever
+
+
+def _quiz_prompt():
+    template = """
+You are an expert quiz generator specialized in creating educational and accurate quizzes.
+
+**SOURCE PRIORITY:**
+1. If a retriever tool is available, use it to access the material.
+2. If a text summary or chunks are provided, rely on that context.
+3. If no material is available, use the topic to search online.
+
+**TASK:**
+Create a {difficulty}-level quiz based on the provided material or topic.
+Include exactly:
+- {mcq_count} multiple choice questions
+- {tf_count} true/false questions
+
+**QUESTION REQUIREMENTS:**
+- Each MCQ must have 4 plausible options (A, B, C, D).
+- Answers must reference the labeled option (e.g., "answer": "A) 12.5 cm").
+- All questions must be factually correct.
+- Include concise explanations referencing material or credible sources.
+
+**OUTPUT FORMAT (MUST BE VALID JSON):**
+{{
+    "quiz_type": "{source_type}",
+    "difficulty": "{difficulty}",
+    "mcq_count": {mcq_count},
+    "tf_count": {tf_count},
+    "mcq": [
+        {{
+            "question": "Question text",
+            "options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"],
+            "answer": "A) Option A",
+            "explanation": "Brief factual explanation"
+        }}
+    ],
+    "tf": [
+        {{
+            "question": "True/False question text",
+            "answer": "True",
+            "explanation": "Brief factual explanation"
+        }}
+    ]
+}}
+
+**AVAILABLE CONTEXT:**
+{context}
+
+**THOUGHTS (optional):**
+{agent_scratchpad}
+"""
+    return PromptTemplate(
+        input_variables=[
+            "difficulty", "mcq_count", "tf_count",
+            "source_type", "context", "agent_scratchpad",
+        ],
+        template=template,
+    )
+
+
+def smart_quiz_generator(
+    difficulty,
+    mcq_count,
+    tf_count,
+    topic_title=None,
+    material_id=None,
+    summary=None,
+    chunks=None,
+):
+    random_chunks = None
+    if chunks:
+        sampled = random.sample(chunks, min(10, len(chunks) - 2)) + [chunks[0], chunks[-1]]
+        random.shuffle(sampled)
+        random_chunks = "\n".join(sampled)
+
+    if material_id:
+        return _contextual_quiz(difficulty, mcq_count, tf_count, random_chunks, material_id)
+    elif summary:
+        return _summary_quiz(difficulty, mcq_count, tf_count, summary)
+    elif chunks:
+        return _summary_quiz(difficulty, mcq_count, tf_count, random_chunks)
+    elif topic_title:
+        return _web_quiz(difficulty, mcq_count, tf_count, topic_title)
+    else:
+        raise ValueError("No data or topic provided for quiz generation.")
+
+
+def _summary_quiz(difficulty, mcq_count, tf_count, context_text):
+    prompt = _quiz_prompt()
+    llm = get_llm()
+    chain = LLMChain(llm=llm, prompt=prompt)
+    response = chain.run(
+        difficulty=difficulty,
+        mcq_count=mcq_count,
+        tf_count=tf_count,
+        source_type="summary",
+        context=context_text,
+        agent_scratchpad="",
+    )
+    return _parse_quiz({"output": response})
+
+
+def _contextual_quiz(difficulty, mcq_count, tf_count, context, material_id):
+    prompt = _quiz_prompt()
+    llm = get_llm()
+
+    retriever = SupabaseRetriever(material_id=material_id, k=5)
+    retriever_tool = create_retriever_tool(
+        retriever,
+        name="quiz_material_retriever",
+        description="Retrieves relevant content from uploaded materials for quiz generation.",
+    )
+
+    agent = create_openai_tools_agent(llm, [retriever_tool], prompt)
+    executor = AgentExecutor(
+        agent=agent,
+        tools=[retriever_tool],
+        verbose=False,
+        return_intermediate_steps=False,
+        handle_parsing_errors=True,
+    )
+
+    response = executor.invoke({
+        "difficulty": difficulty,
+        "source_type": "Document Embeddings",
+        "mcq_count": mcq_count,
+        "tf_count": tf_count,
+        "agent_scratchpad": "",
+        "context": context,
+    })
+    return _parse_quiz(response)
+
+
+def _web_quiz(difficulty, mcq_count, tf_count, topic_title):
+    prompt = _quiz_prompt()
+    llm = get_llm()
+    tools = web_search_tools()
+    agent = create_openai_tools_agent(llm, tools, prompt)
+
+    executor = AgentExecutor(
+        agent=agent,
+        tools=tools,
+        verbose=False,
+        return_intermediate_steps=False,
+        handle_parsing_errors=True,
+    )
+
+    response = executor.invoke({
+        "context": topic_title,
+        "difficulty": difficulty,
+        "mcq_count": mcq_count,
+        "tf_count": tf_count,
+        "source_type": "Web Search",
+        "agent_scratchpad": "",
+    })
+    return _parse_quiz(response)
+
+
+def _parse_quiz(response):
+    output = response["output"] if isinstance(response, dict) else str(response)
+    cleaned = re.sub(r"```(?:json)?\n?", "", output)
+    cleaned = cleaned.replace("```", "").strip()
+    match = re.search(r"(\{[\s\S]*\})", cleaned)
+    if match:
+        cleaned = match.group(1)
+    return json.loads(cleaned)
