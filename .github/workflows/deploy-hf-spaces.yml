@@ -1,6 +1,11 @@
 name: Deploy Backend to Hugging Face Spaces
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
   workflow_dispatch:
     inputs:
       branch:
@@ -14,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.branch }}
+          ref: ${{ github.event.inputs.branch || github.ref_name }}
           fetch-depth: 0
 
       - name: Deploy src only to Hugging Face Space
