@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 from src.summary_generator.summary import summarizer
 from src.store import get_material, get_chunks, save_summary
-from src.dependencies import get_current_user_id
+from src.dependencies import get_current_user_id, get_current_user
 from src.config import settings
 
 router = APIRouter(prefix="/api/materials", tags=["Summarizer"])
@@ -23,6 +23,7 @@ class SummarizeResponse(BaseModel):
 async def generate_summary(
     body: SummarizeRequest,
     user_id: str = Depends(get_current_user_id),
+    current_user=Depends(get_current_user),
 ):
     mat = get_material(body.material_id)
     if not mat:

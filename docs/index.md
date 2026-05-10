@@ -12,7 +12,7 @@ Routes Overview:
 Quick Start:
 
 ```bash
-pip install -r requirements.txt
+pip install -r src/requirements.txt
 uvicorn src.main:app --reload --port 8000
 ```
 

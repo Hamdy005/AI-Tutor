@@ -19,6 +19,11 @@ class Settings:
     supabase_anon_key: str = os.getenv("SUPABASE_ANON_KEY", "")
     model_name: str = os.getenv("MODEL_NAME", "openai/gpt-oss-120b")
     transformers_no_tf: str = os.getenv("TRANSFORMERS_NO_TF", "1")
+    cors_allowed_origins: list[str] = [
+        origin.strip()
+        for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
 
 
 @lru_cache()

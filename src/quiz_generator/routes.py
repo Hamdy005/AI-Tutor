@@ -4,7 +4,7 @@ from typing import Optional
 
 from src.quiz_generator.quiz import smart_quiz_generator
 from src.store import get_material, get_chunks, get_summary, save_quiz
-from src.dependencies import get_current_user_id
+from src.dependencies import get_current_user_id, get_current_user
 from src.config import settings
 
 router = APIRouter(prefix="/api/quiz", tags=["Quiz"])
@@ -28,6 +28,7 @@ class QuizResponse(BaseModel):
 async def generate_quiz(
     body: QuizRequest,
     user_id: str = Depends(get_current_user_id),
+    current_user=Depends(get_current_user),
 ):
     if body.mcq_count < 1 or body.mcq_count > 20:
         raise HTTPException(400, "MCQ count must be between 1 and 20")

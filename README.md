@@ -20,6 +20,11 @@ It summarizes study materials, answers questions like a personal tutor, and gene
 Create a `config.env` file in the project root and add your API key.  
 **Live Streamlit Demo:** [https://hamdy-ai-tutor.streamlit.app](https://hamdy-ai-tutor.streamlit.app)
 
+### API Security Defaults
+- Set `CORS_ALLOWED_ORIGINS` in `config.env` (comma-separated).
+- Backend endpoints require `Authorization: Bearer <token>` or `X-User-Id` (dev fallback).
+- Do not commit `config.env` to source control.
+
 ---
 
 ## 📸 Screenshots
@@ -113,6 +118,6 @@ The system uses a **Hybrid RAG pipeline** to automatically choose the best data 
 ```bash
 git clone https://github.com/Hamdy005/AI-Tutor
 cd AI-Tutor
-pip install -r requirements.txt
+pip install -r src/requirements.txt
 cp config.env.example config.env
 streamlit run app.py

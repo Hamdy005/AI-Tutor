@@ -1,9 +1,10 @@
 import time
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 
 from src.rag.rag import rag_answer
+from src.dependencies import get_current_user
 from src.store import get_material, get_chunks, get_summary, get_or_create_memory
 
 router = APIRouter(prefix="/api/tutor", tags=["Tutor"])
@@ -24,7 +25,10 @@ class TutorResponse(BaseModel):
 
 
 @router.post("/ask", response_model=TutorResponse)
-async def ask_tutor(body: TutorQuery):
+async def ask_tutor(
+    body: TutorQuery,
+    current_user=Depends(get_current_user),
+):
     if not body.query.strip():
         raise HTTPException(400, "Query cannot be empty")
 
