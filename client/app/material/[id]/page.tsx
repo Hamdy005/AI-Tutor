@@ -90,7 +90,7 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
               <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
                 <GraduationCap className="w-5 h-5 text-primary" />
               </div>
-              <span className="text-xl font-bold text-foreground">AI Tutor</span>
+              <span className="text-xl font-bold text-foreground">Study Mate</span>
             </Link>
             <UserDropdown />
           </div>
@@ -340,7 +340,7 @@ Would you like me to elaborate on any of these points?`,
     >
       <Card className="h-[600px] flex flex-col">
         <CardHeader className="border-b">
-          <CardTitle className="text-lg">Chat with AI Tutor</CardTitle>
+          <CardTitle className="text-lg">Chat with Study Mate</CardTitle>
           <CardDescription>
             Ask questions about your learning material
           </CardDescription>
@@ -356,7 +356,7 @@ Would you like me to elaborate on any of these points?`,
                 Start a conversation
               </h3>
               <p className="text-sm text-muted-foreground max-w-sm">
-                Ask any question about your material and get detailed explanations from the AI tutor.
+                Ask any question about your material and get detailed explanations from Study Mate.
               </p>
             </div>
           ) : (

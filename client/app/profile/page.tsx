@@ -96,7 +96,7 @@ export default function ProfilePage() {
               <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
                 <GraduationCap className="w-5 h-5 text-primary" />
               </div>
-              <span className="text-xl font-bold text-foreground">AI Tutor</span>
+              <span className="text-xl font-bold text-foreground">Study Mate</span>
             </Link>
             <UserDropdown />
           </div>
@@ -224,7 +224,7 @@ export default function ProfilePage() {
             <CardHeader>
               <CardTitle>Appearance</CardTitle>
               <CardDescription>
-                Customize how AI Tutor looks on your device
+                Customize how Study Mate looks on your device
               </CardDescription>
             </CardHeader>
             <CardContent>

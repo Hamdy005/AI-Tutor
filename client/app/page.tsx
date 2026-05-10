@@ -13,7 +13,7 @@ export default function HomePage() {
               <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
                 <GraduationCap className="w-5 h-5 text-primary" />
               </div>
-              <span className="text-xl font-bold text-foreground">AI Tutor</span>
+              <span className="text-xl font-bold text-foreground">Study Mate</span>
             </div>
             <div className="flex items-center gap-4">
               <Link href="/login">
@@ -104,7 +104,7 @@ export default function HomePage() {
             Ready to transform your learning?
           </h2>
           <p className="text-lg text-muted-foreground mb-8">
-            Join thousands of students who are already learning smarter with AI Tutor.
+            Join thousands of students who are already learning smarter with Study Mate.
           </p>
           <Link href="/signup">
             <Button size="lg">
@@ -122,10 +122,10 @@ export default function HomePage() {
             <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
               <GraduationCap className="w-4 h-4 text-primary" />
             </div>
-            <span className="font-semibold text-foreground">AI Tutor</span>
+            <span className="font-semibold text-foreground">Study Mate</span>
           </div>
           <p className="text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} AI Tutor. All rights reserved.
+            &copy; {new Date().getFullYear()} Study Mate. All rights reserved.
           </p>
         </div>
       </footer>
