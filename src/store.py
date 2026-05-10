@@ -25,65 +25,65 @@ def _db():
     return None
 
 
+class _FakeTable:
+    def __init__(self, name):
+        self.name = name
+
+    def insert(self, data):
+        if isinstance(data, list):
+            for item in data:
+                item["id"] = item.get("id", _get_next_id())
+                _in_memory.setdefault(self.name, {})[item["id"]] = item
+            class R:
+                data = data
+            return R()
+        data["id"] = data.get("id", _get_next_id())
+        _in_memory.setdefault(self.name, {})[data["id"]] = data
+        class R:
+            data = [data]
+        return R()
+
+    def select(self, *args):
+        return self
+
+    def eq(self, field, value):
+        self._eq_field = field
+        self._eq_value = value
+        return self
+
+    def order(self, field):
+        return self
+
+    def maybe_single(self):
+        records = list(_in_memory.get(self.name, {}).values())
+        if hasattr(self, '_eq_field'):
+            records = [r for r in records if r.get(self._eq_field) == self._eq_value]
+        return self._make_response(records[0] if records else None)
+
+    def execute(self):
+        records = list(_in_memory.get(self.name, {}).values())
+        if hasattr(self, '_eq_field'):
+            records = [r for r in records if r.get(self._eq_field) == self._eq_value]
+        if hasattr(self, '_order_field'):
+            records.sort(key=lambda r: r.get(self._order_field, 0))
+        return self._make_response(records)
+
+    def update(self, data):
+        self._update_data = data
+        return self
+
+    def _make_response(self, data):
+        class R:
+            pass
+        r = R()
+        r.data = data if isinstance(data, list) else ([data] if data else [])
+        return r
+
+
 def _table_supabase(table: str):
     client = _db()
     if client is not None:
         return client.table(table)
-
-    class _FakeTable:
-        def __init__(self, name):
-            self.name = name
-
-        def insert(self, data):
-            if isinstance(data, list):
-                for item in data:
-                    item["id"] = item.get("id", _get_next_id())
-                    _in_memory.setdefault(self.name, {})[item["id"]] = item
-                class R:
-                    data = data
-                return R()
-            data["id"] = data.get("id", _get_next_id())
-            _in_memory.setdefault(self.name, {})[data["id"]] = data
-            class R:
-                data = [data]
-            return R()
-
-        def select(self, *args):
-            return self
-
-        def eq(self, field, value):
-            self._eq_field = field
-            self._eq_value = value
-            return self
-
-        def order(self, field):
-            return self
-
-        def maybe_single(self):
-            records = list(_in_memory.get(self.name, {}).values())
-            if hasattr(self, '_eq_field'):
-                records = [r for r in records if r.get(self._eq_field) == self._eq_value]
-            return self._make_response(records[0] if records else None)
-
-        def execute(self):
-            records = list(_in_memory.get(self.name, {}).values())
-            if hasattr(self, '_eq_field'):
-                records = [r for r in records if r.get(self._eq_field) == self._eq_value]
-            if hasattr(self, '_order_field'):
-                records.sort(key=lambda r: r.get(self._order_field, 0))
-            return self._make_response(records)
-
-        def update(self, data):
-            self._update_data = data
-            return self
-
-        def _make_response(self, data):
-            class R:
-                pass
-            r = R()
-            r.data = data if isinstance(data, list) else ([data] if data else [])
-            return r
-
     return _FakeTable(table)
 
 
@@ -112,8 +112,6 @@ def create_material(user_id: str, source_type: str, title: str,
         data["file_path"] = file_path
     if url:
         data["url"] = url
-    if topic:
-        data["topic"] = topic
     result = _table_supabase("materials").insert(data).execute()
     return result.data[0]
 
@@ -216,25 +214,56 @@ def get_quizzes(material_id: Optional[str] = None, user_id: Optional[str] = None
     return records
 
 
-# ── Users ────────────────────────────────────────────
+# ── Users (maps to Supabase `profiles` table) ─────────
+
+def _map_profile(profile: dict) -> dict:
+    return {
+        "id": profile["id"],
+        "name": profile.get("display_name", ""),
+        "email": profile.get("email", ""),
+        "avatar_url": profile.get("avatar_url", ""),
+    }
+
 
 def create_user(name: str, email: str, password: str) -> dict:
     existing = get_user_by_email(email)
     if existing:
         raise ValueError("Email already registered")
-    data = {"name": name, "email": email, "password": password}
-    result = _table_supabase("users").insert(data).execute()
-    return result.data[0]
+    data = {"display_name": name, "email": email}
+    try:
+        result = _table_supabase("profiles").insert(data).execute()
+        return _map_profile(result.data[0])
+    except Exception:
+        result = _FakeTable("profiles").insert(data).execute()
+        return _map_profile(result.data[0])
 
 
 def get_user_by_email(email: str) -> Optional[dict]:
-    result = _table_supabase("users").select("*").eq("email", email).maybe_single().execute()
-    return result.data[0] if result.data else None
+    try:
+        result = _table_supabase("profiles").select("*").eq("email", email).maybe_single().execute()
+        if result.data:
+            return _map_profile(result.data[0])
+    except Exception:
+        pass
+    fake = _FakeTable("profiles")
+    result = fake.select("*").eq("email", email).maybe_single().execute()
+    if result.data:
+        return _map_profile(result.data[0])
+    return None
 
 
 def get_user_by_id(user_id: str) -> Optional[dict]:
-    result = _table_supabase("users").select("*").eq("id", user_id).maybe_single().execute()
-    return result.data[0] if result.data else None
+    try:
+        result = _table_supabase("profiles").select("*").eq("id", user_id).maybe_single().execute()
+        if result.data:
+            return _map_profile(result.data[0])
+    except Exception:
+        pass
+    fake = _FakeTable("profiles")
+    result = fake.select("*").eq("id", user_id).maybe_single().execute()
+    if result.data:
+        return _map_profile(result.data[0])
+    return None
 
 
 # ── Conversation Memory (in-memory, ephemeral) ─────────

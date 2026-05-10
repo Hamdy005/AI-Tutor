@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, Header, status
 from fastapi.security import OAuth2PasswordBearer
 from typing import Any, Optional
 
-from src.database import get_supabase
+from src.database import get_supabase, get_auth_supabase
 
 DEV_USER_ID = "00000000-0000-0000-0000-000000000001"
 DEV_USER = {"id": DEV_USER_ID, "email": "dev@studymate.ai", "name": "Dev User"}
@@ -16,6 +16,7 @@ async def get_current_user(
     x_user_name: Optional[str] = Header(None),
     x_user_email: Optional[str] = Header(None),
 ) -> Any:
+    auth_client = get_auth_supabase()
     client = get_supabase()
 
     # Dev mode: no Supabase configured
@@ -28,7 +29,20 @@ async def get_current_user(
             }
         return DEV_USER
 
-    # Real Supabase auth
+    # Real Supabase auth - use anon key client for token verification
+    if auth_client is not None:
+        if not token:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+        try:
+            response = auth_client.auth.get_user(token)
+        except Exception:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication")
+        user = getattr(response, "user", None) or response
+        if not user:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unauthorized")
+        return user
+
+    # Fallback to service_role client if anon key not available
     if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
     try:
