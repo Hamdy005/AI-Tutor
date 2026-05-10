@@ -1,9 +1,10 @@
 import time
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
+from typing import Optional
 
 from src.summary_generator.summary import summarizer
-from src.store import get_material, get_chunks, save_summary
+from src.store import get_material, get_chunks, save_summary, get_summary as get_stored_summary
 from src.dependencies import get_current_user_id, get_current_user
 from src.config import settings
 
@@ -50,3 +51,15 @@ async def generate_summary(
         return SummarizeResponse(summary=summary, time_taken=elapsed)
     except Exception as e:
         raise HTTPException(500, f"Summarization failed: {e}")
+
+
+@router.get("/{material_id}/summary")
+async def get_material_summary(
+    material_id: str,
+    user_id: str = Depends(get_current_user_id),
+    current_user=Depends(get_current_user),
+):
+    summary = get_stored_summary(material_id)
+    if not summary:
+        raise HTTPException(404, "No summary found for this material")
+    return {"summary": summary["summary"], "time_taken": summary.get("time_taken", 0)}

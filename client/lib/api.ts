@@ -1,7 +1,5 @@
-// API Configuration
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || ''
 
-// Types
 export interface User {
   id: string
   name: string
@@ -12,7 +10,8 @@ export interface User {
 export interface Material {
   id: string
   title: string
-  source_type: 'pdf' | 'url'
+  source_type: 'pdf' | 'url' | 'topic'
+  topic?: string
   status: 'processing' | 'ready' | 'error'
   created_at: string
   updated_at: string
@@ -46,13 +45,12 @@ export interface QuizResult {
   }[]
 }
 
-// API Helper
 async function fetchAPI<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
-  
+
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...(token && { Authorization: `Bearer ${token}` }),
@@ -66,13 +64,12 @@ async function fetchAPI<T>(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'An error occurred' }))
-    throw new Error(error.message || `HTTP error! status: ${response.status}`)
+    throw new Error(error.message || error.detail || `HTTP error! status: ${response.status}`)
   }
 
   return response.json()
 }
 
-// Auth API
 export const authAPI = {
   login: (email: string, password: string) =>
     fetchAPI<{ token: string; user: User }>('/api/auth/login', {
@@ -93,11 +90,10 @@ export const authAPI = {
     }),
 }
 
-// Materials API
 export const materialsAPI = {
   list: () => fetchAPI<Material[]>('/api/materials'),
 
-  uploadPDF: async (file: File) => {
+  uploadPDF: async (file: File): Promise<{ material_id: string; title: string; chunks_count: number }> => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
     const formData = new FormData()
     formData.append('file', file)
@@ -111,45 +107,55 @@ export const materialsAPI = {
     })
 
     if (!response.ok) {
-      throw new Error('Failed to upload PDF')
+      const error = await response.json().catch(() => ({ message: 'Failed to upload PDF' }))
+      throw new Error(error.message || error.detail || 'Failed to upload PDF')
     }
 
-    return response.json() as Promise<Material>
+    return response.json()
   },
 
-  scrapeURL: (url: string, source_type: 'url') =>
-    fetchAPI<Material>('/api/materials/scrape-url', {
+  scrapeURL: (url: string) =>
+    fetchAPI<{ material_id: string; title: string; chunks_count: number }>('/api/materials/scrape-url', {
       method: 'POST',
-      body: JSON.stringify({ url, source_type }),
+      body: JSON.stringify({ url }),
     }),
 
   summarize: (material_id: string) =>
-    fetchAPI<{ summary: string }>('/api/materials/summarize', {
+    fetchAPI<{ summary: string; time_taken: number }>('/api/materials/summarize', {
       method: 'POST',
       body: JSON.stringify({ material_id }),
     }),
+
+  getSummary: (material_id: string) =>
+    fetchAPI<{ summary: string; time_taken: number }>(`/api/materials/${material_id}/summary`),
 }
 
-// Tutor API
-export const tutorAPI = {
-  ask: (material_id: string, question: string, chat_history: ChatMessage[]) =>
-    fetchAPI<{ response: string }>('/api/tutor/ask', {
-      method: 'POST',
-      body: JSON.stringify({ material_id, question, chat_history }),
-    }),
-}
-
-// Quiz API
 export const quizAPI = {
   generate: (
-    material_id: string,
-    source_type: string,
-    difficulty: 'easy' | 'medium' | 'hard',
+    difficulty: string,
     mcq_count: number,
-    tf_count: number
+    tf_count: number,
+    source_type: string,
+    material_id?: string,
+    topic?: string,
   ) =>
-    fetchAPI<QuizQuestion[]>('/api/quiz/generate', {
+    fetchAPI<{ quiz: Record<string, unknown>; quiz_id: string }>('/api/quiz/generate', {
       method: 'POST',
-      body: JSON.stringify({ material_id, source_type, difficulty, mcq_count, tf_count }),
+      body: JSON.stringify({ difficulty, mcq_count, tf_count, source_type, material_id, topic }),
+    }),
+
+  list: (material_id?: string) => {
+    const params = material_id ? `?material_id=${material_id}` : ''
+    return fetchAPI<any[]>(`/api/quiz/list${params}`)
+  },
+}
+
+export const tutorAPI = {
+  ask: (query: string, source_type: string, material_id?: string, memory_id?: string) =>
+    fetchAPI<{ answer: string; source: string; time_taken: number; memory_id: string }>('/api/tutor/ask', {
+      method: 'POST',
+      body: JSON.stringify({ query, source_type, material_id, memory_id }),
     }),
 }
+
+

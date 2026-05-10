@@ -23,16 +23,18 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { UserDropdown } from '@/components/user-dropdown'
+import { useAuth } from '@/contexts/auth-context'
 
 export default function ProfilePage() {
   const router = useRouter()
+  const { user, updateUser } = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
   const [formData, setFormData] = useState({
-    name: 'John Doe',
-    email: 'john@example.com',
-    avatar: '',
+    name: user?.name || '',
+    email: user?.email || '',
+    avatar: user?.avatar || '',
   })
 
   const initials = formData.name
@@ -45,8 +47,8 @@ export default function ProfilePage() {
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      updateUser({ name: formData.name, email: formData.email, avatar: formData.avatar || undefined })
       toast.success('Profile updated successfully!')
     } catch {
       toast.error('Failed to update profile')
@@ -69,13 +71,11 @@ export default function ProfilePage() {
 
   const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
     setTheme(newTheme)
-    // In a real app, you would apply the theme to the document
     if (newTheme === 'dark') {
       document.documentElement.classList.add('dark')
     } else if (newTheme === 'light') {
       document.documentElement.classList.remove('dark')
     } else {
-      // System preference
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
       if (prefersDark) {
         document.documentElement.classList.add('dark')
@@ -88,7 +88,6 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Navigation */}
       <nav className="border-b border-border/50 bg-card/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -103,7 +102,6 @@ export default function ProfilePage() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Button
           variant="ghost"
@@ -127,7 +125,6 @@ export default function ProfilePage() {
             </p>
           </div>
 
-          {/* Profile Card */}
           <Card>
             <CardHeader>
               <CardTitle>Personal Information</CardTitle>
@@ -136,7 +133,6 @@ export default function ProfilePage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Avatar */}
               <div className="flex items-center gap-6">
                 <div className="relative">
                   <Avatar className="h-24 w-24">
@@ -170,7 +166,6 @@ export default function ProfilePage() {
 
               <Separator />
 
-              {/* Form Fields */}
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Full Name</Label>
@@ -179,9 +174,7 @@ export default function ProfilePage() {
                     <Input
                       id="name"
                       value={formData.name}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, name: e.target.value }))
-                      }
+                      onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                       className="pl-10"
                       disabled={isSaving}
                     />
@@ -196,9 +189,7 @@ export default function ProfilePage() {
                       id="email"
                       type="email"
                       value={formData.email}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, email: e.target.value }))
-                      }
+                      onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
                       className="pl-10"
                       disabled={isSaving}
                     />
@@ -208,10 +199,7 @@ export default function ProfilePage() {
 
               <Button onClick={handleSave} disabled={isSaving}>
                 {isSaving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</>
                 ) : (
                   'Save Changes'
                 )}
@@ -219,62 +207,36 @@ export default function ProfilePage() {
             </CardContent>
           </Card>
 
-          {/* Settings Card */}
           <Card>
             <CardHeader>
               <CardTitle>Appearance</CardTitle>
-              <CardDescription>
-                Customize how Study Mate looks on your device
-              </CardDescription>
+              <CardDescription>Customize how Study Mate looks on your device</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 <Label>Theme</Label>
                 <div className="grid grid-cols-3 gap-3">
-                  <Button
-                    variant={theme === 'light' ? 'default' : 'outline'}
-                    className="flex flex-col items-center gap-2 h-auto py-4"
-                    onClick={() => handleThemeChange('light')}
-                  >
-                    <Sun className="h-5 w-5" />
-                    <span className="text-sm">Light</span>
+                  <Button variant={theme === 'light' ? 'default' : 'outline'} className="flex flex-col items-center gap-2 h-auto py-4" onClick={() => handleThemeChange('light')}>
+                    <Sun className="h-5 w-5" /><span className="text-sm">Light</span>
                   </Button>
-                  <Button
-                    variant={theme === 'dark' ? 'default' : 'outline'}
-                    className="flex flex-col items-center gap-2 h-auto py-4"
-                    onClick={() => handleThemeChange('dark')}
-                  >
-                    <Moon className="h-5 w-5" />
-                    <span className="text-sm">Dark</span>
+                  <Button variant={theme === 'dark' ? 'default' : 'outline'} className="flex flex-col items-center gap-2 h-auto py-4" onClick={() => handleThemeChange('dark')}>
+                    <Moon className="h-5 w-5" /><span className="text-sm">Dark</span>
                   </Button>
-                  <Button
-                    variant={theme === 'system' ? 'default' : 'outline'}
-                    className="flex flex-col items-center gap-2 h-auto py-4"
-                    onClick={() => handleThemeChange('system')}
-                  >
-                    <Monitor className="h-5 w-5" />
-                    <span className="text-sm">System</span>
+                  <Button variant={theme === 'system' ? 'default' : 'outline'} className="flex flex-col items-center gap-2 h-auto py-4" onClick={() => handleThemeChange('system')}>
+                    <Monitor className="h-5 w-5" /><span className="text-sm">System</span>
                   </Button>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Danger Zone */}
           <Card className="border-destructive/30">
             <CardHeader>
               <CardTitle className="text-destructive">Danger Zone</CardTitle>
-              <CardDescription>
-                Irreversible and destructive actions
-              </CardDescription>
+              <CardDescription>Irreversible and destructive actions</CardDescription>
             </CardHeader>
             <CardContent>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  toast.error('This action is disabled in demo mode')
-                }}
-              >
+              <Button variant="destructive" onClick={() => toast.error('This action is disabled in demo mode')}>
                 Delete Account
               </Button>
             </CardContent>

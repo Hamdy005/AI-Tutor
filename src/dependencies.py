@@ -5,21 +5,32 @@ from typing import Any, Optional
 from src.database import get_supabase
 
 DEV_USER_ID = "00000000-0000-0000-0000-000000000001"
+DEV_USER = {"id": DEV_USER_ID, "email": "dev@studymate.ai", "name": "Dev User"}
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    token: Optional[str] = Depends(oauth2_scheme),
     x_user_id: Optional[str] = Header(None),
+    x_user_name: Optional[str] = Header(None),
+    x_user_email: Optional[str] = Header(None),
 ) -> Any:
     client = get_supabase()
+
+    # Dev mode: no Supabase configured
     if client is None:
         if x_user_id:
-            return {"id": x_user_id}
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR, "Supabase not configured"
-        )
+            return {
+                "id": x_user_id,
+                "name": x_user_name or "User",
+                "email": x_user_email or f"user{x_user_id}@studymate.ai",
+            }
+        return DEV_USER
+
+    # Real Supabase auth
+    if not token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
     try:
         response = client.auth.get_user(token)
     except Exception:

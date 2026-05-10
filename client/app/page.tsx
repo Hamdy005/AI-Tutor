@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-background">
-      {/* Navigation */}
       <nav className="border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -27,7 +26,6 @@ export default function HomePage() {
         </div>
       </nav>
 
-      {/* Hero Section */}
       <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground leading-tight text-balance">
@@ -53,7 +51,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Features Section */}
       <section className="py-20 px-4 sm:px-6 lg:px-8 bg-muted/30">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-3xl sm:text-4xl font-bold text-center text-foreground mb-4">
@@ -62,7 +59,7 @@ export default function HomePage() {
           <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
             Our AI-powered platform transforms how you study by understanding your materials and helping you master any subject.
           </p>
-          
+
           <div className="grid md:grid-cols-3 gap-8">
             <div className="bg-card rounded-2xl p-8 shadow-sm border border-border/50">
               <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center mb-6">
@@ -73,7 +70,7 @@ export default function HomePage() {
                 Upload PDFs, articles, or YouTube videos and get concise, accurate summaries instantly. Focus on what matters most.
               </p>
             </div>
-            
+
             <div className="bg-card rounded-2xl p-8 shadow-sm border border-border/50">
               <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center mb-6">
                 <MessageSquare className="w-6 h-6 text-accent" />
@@ -83,7 +80,7 @@ export default function HomePage() {
                 Ask questions about your materials and get detailed explanations. Like having a personal tutor available 24/7.
               </p>
             </div>
-            
+
             <div className="bg-card rounded-2xl p-8 shadow-sm border border-border/50">
               <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center mb-6">
                 <Brain className="w-6 h-6 text-primary" />
@@ -97,7 +94,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* CTA Section */}
       <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
@@ -115,7 +111,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="border-t border-border/50 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2">

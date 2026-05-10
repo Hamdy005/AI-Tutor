@@ -14,37 +14,23 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { toast } from 'sonner'
+import { useAuth } from '@/contexts/auth-context'
 
-interface UserDropdownProps {
-  user?: {
-    name: string
-    email: string
-    avatar?: string
-  }
-}
-
-export function UserDropdown({ user }: UserDropdownProps) {
+export function UserDropdown() {
+  const { user, logout } = useAuth()
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
 
-  // Default user for demo
-  const currentUser = user || {
-    name: 'John Doe',
-    email: 'john@example.com',
-    avatar: undefined,
-  }
-
-  const initials = currentUser.name
-    .split(' ')
+  const initials = user?.name
+    ?.split(' ')
     .map((n) => n[0])
     .join('')
     .toUpperCase()
-    .slice(0, 2)
+    .slice(0, 2) || '?'
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     try {
-      // Clear auth token
-      localStorage.removeItem('auth_token')
+      logout()
       toast.success('Signed out successfully')
       router.push('/login')
     } catch {
@@ -57,7 +43,7 @@ export function UserDropdown({ user }: UserDropdownProps) {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-10 w-10 rounded-full">
           <Avatar className="h-10 w-10">
-            <AvatarImage src={currentUser.avatar} alt={currentUser.name} />
+            <AvatarImage src={user?.avatar} alt={user?.name || 'User'} />
             <AvatarFallback className="bg-primary/10 text-primary font-medium">
               {initials}
             </AvatarFallback>
@@ -67,9 +53,9 @@ export function UserDropdown({ user }: UserDropdownProps) {
       <DropdownMenuContent className="w-56" align="end" forceMount>
         <div className="flex items-center justify-start gap-2 p-2">
           <div className="flex flex-col space-y-1 leading-none">
-            <p className="font-medium">{currentUser.name}</p>
+            <p className="font-medium">{user?.name || 'User'}</p>
             <p className="w-[200px] truncate text-sm text-muted-foreground">
-              {currentUser.email}
+              {user?.email || ''}
             </p>
           </div>
         </div>

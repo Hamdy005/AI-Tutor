@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from src.materials.text_utils import text_from_pdf, chunk_text, scrap_website
 from src.rag.rag import store_embeddings
-from src.store import create_material, update_material_status, save_chunks
+from src.store import create_material, update_material_status, save_chunks, list_materials
 from src.dependencies import get_current_user_id, get_current_user
 
 router = APIRouter(prefix="/api/materials", tags=["Materials"])
@@ -36,6 +36,14 @@ def _validate_pdf_upload(file: UploadFile) -> None:
 
 class URLInput(BaseModel):
     url: str
+
+
+@router.get("")
+async def get_materials(
+    user_id: str = Depends(get_current_user_id),
+    current_user=Depends(get_current_user),
+):
+    return list_materials(user_id)
 
 
 @router.post("/upload-pdf")

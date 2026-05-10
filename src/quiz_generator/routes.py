@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from src.quiz_generator.quiz import smart_quiz_generator
-from src.store import get_material, get_chunks, get_summary, save_quiz
+from src.store import get_material, get_chunks, get_summary, save_quiz, get_quizzes
 from src.dependencies import get_current_user_id, get_current_user
 from src.config import settings
 
@@ -22,6 +22,15 @@ class QuizRequest(BaseModel):
 class QuizResponse(BaseModel):
     quiz: dict
     quiz_id: str
+
+
+@router.get("/list")
+async def get_quiz_list(
+    material_id: Optional[str] = None,
+    user_id: str = Depends(get_current_user_id),
+    current_user=Depends(get_current_user),
+):
+    return get_quizzes(material_id=material_id, user_id=user_id)
 
 
 @router.post("/generate", response_model=QuizResponse)

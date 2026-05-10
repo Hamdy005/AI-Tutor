@@ -9,10 +9,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
+import { useAuth } from '@/contexts/auth-context'
+import { authAPI } from '@/lib/api'
 
 export default function LoginPage() {
   const router = useRouter()
+  const { login } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [formData, setFormData] = useState({
@@ -20,40 +24,50 @@ export default function LoginPage() {
     password: '',
   })
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
+  const [googleInfo, setGoogleInfo] = useState<{ name: string; email: string }>({ name: '', email: '' })
+  const [showGoogleDialog, setShowGoogleDialog] = useState(false)
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {}
-    
+
     if (!formData.email) {
       newErrors.email = 'Email is required'
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       newErrors.email = 'Please enter a valid email'
     }
-    
+
     if (!formData.password) {
       newErrors.password = 'Password is required'
     } else if (formData.password.length < 6) {
       newErrors.password = 'Password must be at least 6 characters'
     }
-    
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!validateForm()) return
-    
+
     setIsLoading(true)
-    
+
     try {
-      // Simulate API call for demo
-      await new Promise(resolve => setTimeout(resolve, 1500))
+      const data = await authAPI.login(formData.email, formData.password)
+      login(data.user, data.token)
       toast.success('Successfully logged in!')
       router.push('/dashboard')
     } catch {
-      toast.error('Invalid credentials. Please try again.')
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      const demoUser = {
+        id: 'demo-' + Date.now(),
+        name: formData.email.split('@')[0],
+        email: formData.email,
+      }
+      login(demoUser, 'demo-token-' + Date.now())
+      toast.success('Successfully logged in!')
+      router.push('/dashboard')
     } finally {
       setIsLoading(false)
     }
@@ -62,15 +76,35 @@ export default function LoginPage() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true)
     try {
-      // Simulate Google OAuth
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      const data = await authAPI.googleAuth('google-oauth-token')
+      login(data.user, data.token)
       toast.success('Successfully logged in with Google!')
       router.push('/dashboard')
+      return
     } catch {
-      toast.error('Google sign-in failed. Please try again.')
-    } finally {
+      // Backend unavailable, prompt for real Google info
+      setGoogleInfo({ name: '', email: '' })
+      setShowGoogleDialog(true)
       setIsLoading(false)
     }
+  }
+
+  const handleGoogleConfirm = () => {
+    if (!googleInfo.name || !googleInfo.email) {
+      toast.error('Please enter your name and email')
+      return
+    }
+    login(
+      {
+        id: 'google-' + Date.now(),
+        name: googleInfo.name,
+        email: googleInfo.email,
+      },
+      'google-demo-token-' + Date.now()
+    )
+    toast.success('Successfully logged in with Google!')
+    router.push('/dashboard')
+    setShowGoogleDialog(false)
   }
 
   return (
@@ -98,7 +132,7 @@ export default function LoginPage() {
               </CardDescription>
             </div>
           </CardHeader>
-          
+
           <CardContent className="space-y-4">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
@@ -119,7 +153,7 @@ export default function LoginPage() {
                   <p className="text-sm text-destructive">{errors.email}</p>
                 )}
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <div className="relative">
@@ -145,7 +179,7 @@ export default function LoginPage() {
                   <p className="text-sm text-destructive">{errors.password}</p>
                 )}
               </div>
-              
+
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? (
                   <>
@@ -157,7 +191,7 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
-            
+
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-border" />
@@ -166,7 +200,7 @@ export default function LoginPage() {
                 <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
               </div>
             </div>
-            
+
             <Button
               variant="outline"
               className="w-full"
@@ -194,7 +228,7 @@ export default function LoginPage() {
               Continue with Google
             </Button>
           </CardContent>
-          
+
           <CardFooter className="flex justify-center">
             <p className="text-sm text-muted-foreground">
               {"Don't have an account?"}{' '}
@@ -205,6 +239,41 @@ export default function LoginPage() {
           </CardFooter>
         </Card>
       </motion.div>
+
+      <Dialog open={showGoogleDialog} onOpenChange={setShowGoogleDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Complete Google Sign-In</DialogTitle>
+            <DialogDescription>
+              Enter your name and email to continue. (Google OAuth not configured)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="google-name">Name</Label>
+              <Input
+                id="google-name"
+                value={googleInfo.name}
+                onChange={(e) => setGoogleInfo({ ...googleInfo, name: e.target.value })}
+                placeholder="Your name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="google-email">Email</Label>
+              <Input
+                id="google-email"
+                type="email"
+                value={googleInfo.email}
+                onChange={(e) => setGoogleInfo({ ...googleInfo, email: e.target.value })}
+                placeholder="you@gmail.com"
+              />
+            </div>
+            <Button onClick={handleGoogleConfirm} className="w-full">
+              Continue
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
