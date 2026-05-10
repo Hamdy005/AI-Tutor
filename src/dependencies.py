@@ -29,30 +29,27 @@ async def get_current_user(
             }
         return DEV_USER
 
-    # Real Supabase auth - use anon key client for token verification
-    if auth_client is not None:
-        if not token:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+    # If a Bearer token is present, verify it with Supabase
+    if token:
         try:
-            response = auth_client.auth.get_user(token)
+            verify_client = auth_client if auth_client is not None else client
+            response = verify_client.auth.get_user(token)
+            user = getattr(response, "user", None) or response
+            if user:
+                return user
         except Exception:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication")
-        user = getattr(response, "user", None) or response
-        if not user:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unauthorized")
-        return user
-
-    # Fallback to service_role client if anon key not available
-    if not token:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
-    try:
-        response = client.auth.get_user(token)
-    except Exception:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication")
-    user = getattr(response, "user", None) or response
-    if not user:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unauthorized")
-    return user
+
+    # No Bearer token: fall back to x-user-id header (e.g. passed by the frontend session)
+    if x_user_id:
+        return {
+            "id": x_user_id,
+            "name": x_user_name or "User",
+            "email": x_user_email or f"user{x_user_id}@studymate.ai",
+        }
+
+    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
 
 
 async def get_current_user_id(current_user=Depends(get_current_user)) -> str:
