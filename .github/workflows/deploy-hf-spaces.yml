@@ -23,3 +23,4 @@ jobs:
         run: |
           git subtree split --prefix src -b hf-deploy
           git push --force https://user:$HF_TOKEN@huggingface.co/spaces/${{ secrets.HF_SPACE_ID }} hf-deploy:main
+          

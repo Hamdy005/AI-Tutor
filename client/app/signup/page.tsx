@@ -9,10 +9,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/auth-context'
 import { authAPI } from '@/lib/api'
+import { supabase } from '@/lib/supabase'
 
 export default function SignupPage() {
   const router = useRouter()
@@ -32,8 +32,6 @@ export default function SignupPage() {
     password?: string
     confirmPassword?: string
   }>({})
-  const [googleInfo, setGoogleInfo] = useState<{ name: string; email: string }>({ name: '', email: '' })
-  const [showGoogleDialog, setShowGoogleDialog] = useState(false)
 
   const validateForm = () => {
     const newErrors: typeof errors = {}
@@ -78,16 +76,9 @@ export default function SignupPage() {
       login(data.user, data.token)
       toast.success('Account created successfully!')
       router.push('/dashboard')
-    } catch {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      const demoUser = {
-        id: 'demo-' + Date.now(),
-        name: formData.name,
-        email: formData.email,
-      }
-      login(demoUser, 'demo-token-' + Date.now())
-      toast.success('Account created successfully!')
-      router.push('/dashboard')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Signup failed'
+      toast.error(msg)
     } finally {
       setIsLoading(false)
     }
@@ -96,35 +87,21 @@ export default function SignupPage() {
   const handleGoogleSignUp = async () => {
     setIsLoading(true)
     try {
-      const data = await authAPI.googleAuth('google-oauth-token')
-      login(data.user, data.token)
-      toast.success('Successfully signed up with Google!')
-      router.push('/dashboard')
-      return
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      })
+      if (error) {
+        toast.error('Google sign-up failed: ' + error.message)
+        setIsLoading(false)
+      }
+      // On success, Supabase redirects the browser
     } catch {
-      // Backend unavailable, prompt for real Google info
-      setGoogleInfo({ name: '', email: '' })
-      setShowGoogleDialog(true)
+      toast.error('Google sign-up is not available right now')
       setIsLoading(false)
     }
-  }
-
-  const handleGoogleConfirm = () => {
-    if (!googleInfo.name || !googleInfo.email) {
-      toast.error('Please enter your name and email')
-      return
-    }
-    login(
-      {
-        id: 'google-' + Date.now(),
-        name: googleInfo.name,
-        email: googleInfo.email,
-      },
-      'google-demo-token-' + Date.now()
-    )
-    toast.success('Successfully signed up with Google!')
-    router.push('/dashboard')
-    setShowGoogleDialog(false)
   }
 
   return (
@@ -305,40 +282,6 @@ export default function SignupPage() {
         </Card>
       </motion.div>
 
-      <Dialog open={showGoogleDialog} onOpenChange={setShowGoogleDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Complete Google Sign-Up</DialogTitle>
-            <DialogDescription>
-              Enter your name and email to continue. (Google OAuth not configured)
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="google-name">Name</Label>
-              <Input
-                id="google-name"
-                value={googleInfo.name}
-                onChange={(e) => setGoogleInfo({ ...googleInfo, name: e.target.value })}
-                placeholder="Your name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="google-email">Email</Label>
-              <Input
-                id="google-email"
-                type="email"
-                value={googleInfo.email}
-                onChange={(e) => setGoogleInfo({ ...googleInfo, email: e.target.value })}
-                placeholder="you@gmail.com"
-              />
-            </div>
-            <Button onClick={handleGoogleConfirm} className="w-full">
-              Continue
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

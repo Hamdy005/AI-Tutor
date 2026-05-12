@@ -1,6 +1,6 @@
 from typing import Optional
 from datetime import datetime, timezone
-from langchain.memory import ConversationBufferMemory
+from langchain.memory import ConversationBufferMemory, ConversationBufferWindowMemory
 from src.database import get_supabase
 
 _in_memory: dict = {
@@ -18,30 +18,36 @@ def _get_next_id() -> str:
     return str(_in_memory["next_id"])
 
 
-def _db():
-    client = get_supabase()
-    if client is not None:
-        return client
+_supabase_client = None
+
+def _db():  
+    global _supabase_client
+    if _supabase_client is None:
+        _supabase_client = get_supabase()
+    if _supabase_client is not None:
+        return _supabase_client
     return None
 
 
 class _FakeTable:
     def __init__(self, name):
         self.name = name
+        self._pending_insert: list | None = None
+        self._eq_field: str | None = None
+        self._eq_value = None
+        self._update_data: dict | None = None
 
     def insert(self, data):
         if isinstance(data, list):
             for item in data:
                 item["id"] = item.get("id", _get_next_id())
                 _in_memory.setdefault(self.name, {})[item["id"]] = item
-            class R:
-                data = data
-            return R()
-        data["id"] = data.get("id", _get_next_id())
-        _in_memory.setdefault(self.name, {})[data["id"]] = data
-        class R:
-            data = [data]
-        return R()
+            self._pending_insert = data
+        else:
+            data["id"] = data.get("id", _get_next_id())
+            _in_memory.setdefault(self.name, {})[data["id"]] = data
+            self._pending_insert = [data]
+        return self
 
     def select(self, *args):
         return self
@@ -56,21 +62,36 @@ class _FakeTable:
 
     def maybe_single(self):
         records = list(_in_memory.get(self.name, {}).values())
-        if hasattr(self, '_eq_field'):
+        if self._eq_field:
             records = [r for r in records if r.get(self._eq_field) == self._eq_value]
         return self._make_response(records[0] if records else None)
-
-    def execute(self):
-        records = list(_in_memory.get(self.name, {}).values())
-        if hasattr(self, '_eq_field'):
-            records = [r for r in records if r.get(self._eq_field) == self._eq_value]
-        if hasattr(self, '_order_field'):
-            records.sort(key=lambda r: r.get(self._order_field, 0))
-        return self._make_response(records)
 
     def update(self, data):
         self._update_data = data
         return self
+
+    def delete(self):
+        """Mark this query for deletion."""
+        self._delete = True
+        return self
+
+    def execute(self):
+        if getattr(self, '_delete', False):
+            store = _in_memory.get(self.name, {})
+            if self._eq_field:
+                keys = [k for k, v in store.items() if v.get(self._eq_field) == self._eq_value]
+                for k in keys:
+                    store.pop(k, None)
+            return self._make_response([])
+        if self._pending_insert is not None:
+            return self._make_response(self._pending_insert)
+        records = list(_in_memory.get(self.name, {}).values())
+        if self._eq_field:
+            records = [r for r in records if r.get(self._eq_field) == self._eq_value]
+        if self._update_data is not None:
+            for r in records:
+                r.update(self._update_data)
+        return self._make_response(records)
 
     def _make_response(self, data):
         class R:
@@ -86,14 +107,25 @@ def _table_supabase(table: str):
         return client.table(table)
     return _FakeTable(table)
 
+def _robust_execute(query):
+    import time
+    from httpx import RemoteProtocolError
+    for attempt in range(3):
+        try:
+            return query.execute()
+        except (RemoteProtocolError, Exception) as e:
+            if attempt == 2: raise e
+            time.sleep(0.5 * (attempt + 1))
+    return query.execute()
+
 
 # ── Materials ──────────────────────────────────────────
 
 def list_materials(user_id: str) -> list[dict]:
-    sup = _table_supabase("materials")
-    if sup is not None and not isinstance(sup.execute().__class__.__name__, '_FakeTable'):
+    client = _db()
+    if client is not None:
         try:
-            result = sup.select("*").eq("user_id", user_id).order("created_at").execute()
+            result = client.table("materials").select("*").eq("user_id", user_id).order("created_at").execute()
             return list(reversed(result.data))
         except Exception:
             pass
@@ -121,12 +153,44 @@ def update_material_status(material_id: str, status: str,
     data = {"status": status}
     if error_message:
         data["error_message"] = error_message
-    _table_supabase("materials").update(data).eq("id", material_id).execute()
+    _robust_execute(_table_supabase("materials").update(data).eq("id", material_id))
 
 
 def get_material(material_id: str) -> Optional[dict]:
+    if material_id.startswith("temp-"):
+        return None
     result = _table_supabase("materials").select("*").eq("id", material_id).execute()
     return result.data[0] if result.data else None
+
+
+def rename_material(material_id: str, title: str):
+    if material_id.startswith("temp-"):
+        return
+    _robust_execute(_table_supabase("materials").update({
+        "title": title,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", material_id))
+
+
+def delete_material(material_id: str):
+    if material_id.startswith("temp-"):
+        return
+    # Due to cascading or manual deletion, we delete child records first
+    
+    # chat_messages don't have material_id, so we must fetch session_ids first
+    sessions_res = _table_supabase("chat_sessions").select("id").eq("material_id", material_id).execute()
+    session_ids = [s["id"] for s in sessions_res.data] if sessions_res.data else []
+
+    for sid in session_ids:
+        _table_supabase("chat_messages").delete().eq("session_id", sid).execute()
+
+    _table_supabase("chat_sessions").delete().eq("material_id", material_id).execute()
+    _table_supabase("summaries").delete().eq("material_id", material_id).execute()
+    _table_supabase("quizzes").delete().eq("material_id", material_id).execute()
+    # Delete embeddings before chunks (FK dependency)
+    _table_supabase("material_embeddings").delete().eq("material_id", material_id).execute()
+    _table_supabase("material_chunks").delete().eq("material_id", material_id).execute()
+    _table_supabase("materials").delete().eq("id", material_id).execute()
 
 
 # ── Material Chunks ────────────────────────────────────
@@ -163,23 +227,30 @@ def save_summary(material_id: str, user_id: str, summary: str,
         "time_taken": time_taken,
         "model_name": model_name,
     }
-    tbl = _table_supabase("summaries")
-    existing = tbl.select("*").eq("material_id", material_id).execute()
+    existing = _table_supabase("summaries").select("*").eq("material_id", material_id).execute()
     if existing.data:
-        tbl.update(data).eq("material_id", material_id).execute()
+        _table_supabase("summaries").update(data).eq("material_id", material_id).execute()
     else:
-        tbl.insert(data).execute()
+        _table_supabase("summaries").insert(data).execute()
 
 
 def get_summary(material_id: str) -> Optional[dict]:
-    result = (
-        _table_supabase("summaries")
-        .select("*")
-        .eq("material_id", material_id)
-        .maybe_single()
-        .execute()
-    )
-    return result.data if result.data else None
+    try:
+        result = (
+            _table_supabase("summaries")
+            .select("*")
+            .eq("material_id", material_id)
+            .maybe_single()
+            .execute()
+        )
+        if not result or result.data is None:
+            return None
+        # _make_response returns list; unwrap the first item
+        if isinstance(result.data, list):
+            return result.data[0] if result.data else None
+        return result.data
+    except Exception:
+        return None
 
 
 # ── Quizzes ────────────────────────────────────────────
@@ -266,6 +337,136 @@ def get_user_by_id(user_id: str) -> Optional[dict]:
     return None
 
 
+# ── Chat Messages (persistent) ──────────────────────────
+
+def save_chat_messages(material_id: str, user_id: str, messages: list[dict]):
+    existing = get_chat_messages(material_id)
+    data = {
+        "material_id": material_id,
+        "user_id": user_id,
+        "messages": messages,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    tbl = _table_supabase("chat_messages")
+    if existing:
+        tbl.update(data).eq("material_id", material_id).execute()
+    else:
+        data["created_at"] = data["updated_at"]
+        tbl.insert(data).execute()
+
+
+def get_chat_messages(material_id: str) -> list[dict]:
+    result = (
+        _table_supabase("chat_messages")
+        .select("*")
+        .eq("material_id", material_id)
+        .maybe_single()
+        .execute()
+    )
+    if isinstance(result.data, list):
+        data = result.data[0] if result.data else {}
+    else:
+        data = result.data or {}
+    return data.get("messages", [])
+
+
+# ── Quiz Results ────────────────────────────────────────
+
+def save_quiz_result(quiz_id: str, user_id: str, result_data: dict):
+    data = {
+        "quiz_id": quiz_id,
+        "user_id": user_id,
+        "score":   int(result_data.get("score", 0)),
+        "total":   int(result_data.get("total", 0)),
+        "results": result_data,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _table_supabase("quiz_attempts").insert(data).execute()
+
+
+def get_quiz_results(quiz_id: str) -> list[dict]:
+    result = (
+        _table_supabase("quiz_attempts")
+        .select("*")
+        .eq("quiz_id", quiz_id)
+        .order("created_at", desc=False)
+        .execute()
+    )
+    return result.data
+
+
+# ── Chat Sessions (proper DB structure) ───────────────
+
+def create_chat_session(user_id: str, material_id: str, title: str = "New Chat") -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    data = {
+        "user_id": user_id,
+        "material_id": material_id,
+        "title": title,
+        "created_at": now,
+        "updated_at": now,
+    }
+    result = _table_supabase("chat_sessions").insert(data).execute()
+    return result.data[0]
+
+
+def list_chat_sessions(material_id: str, user_id: str) -> list[dict]:
+    result = (
+        _table_supabase("chat_sessions")
+        .select("*")
+        .eq("material_id", material_id)
+        .eq("user_id", user_id)
+        .order("created_at")
+        .execute()
+    )
+    return result.data
+
+
+def get_chat_session(session_id: str) -> Optional[dict]:
+    result = _table_supabase("chat_sessions").select("*").eq("id", session_id).maybe_single().execute()
+    if isinstance(result.data, list):
+        return result.data[0] if result.data else None
+    return result.data or None
+
+
+def rename_chat_session(session_id: str, title: str):
+    _table_supabase("chat_sessions").update({
+        "title": title,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", session_id).execute()
+
+
+def delete_chat_session(session_id: str):
+    _robust_execute(_table_supabase("chat_messages").delete().eq("session_id", session_id))
+    _robust_execute(_table_supabase("chat_sessions").delete().eq("id", session_id))
+
+
+def append_session_message(session_id: str, role: str, content: str) -> dict:
+    data = {
+        "session_id": session_id,
+        "role": role,
+        "content": content,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    result = _table_supabase("chat_messages").insert(data).execute()
+    # Update session's updated_at
+    _table_supabase("chat_sessions").update({
+        "updated_at": data["created_at"]
+    }).eq("id", session_id).execute()
+    return result.data[0]
+
+
+def get_session_messages(session_id: str) -> list[dict]:
+    result = (
+        _table_supabase("chat_messages")
+        .select("*")
+        .eq("session_id", session_id)
+        .order("created_at")
+        .execute()
+    )
+    return result.data
+
+
 # ── Conversation Memory (in-memory, ephemeral) ─────────
 
 import uuid as _uuid
@@ -273,12 +474,23 @@ import uuid as _uuid
 _memories: dict[str, ConversationBufferMemory] = {}
 
 
-def get_or_create_memory(memory_id: Optional[str] = None):
+def get_or_create_memory(memory_id: Optional[str] = None, seed_messages: list[dict] | None = None):
+    """Get or create a ConversationBufferMemory, optionally seeding it from DB messages."""
     if memory_id and memory_id in _memories:
         return _memories[memory_id], memory_id
     mid = memory_id or str(_uuid.uuid4())
-    mem = ConversationBufferMemory(
-        input_key="input", memory_key="chat_history", return_messages=True
+    mem = ConversationBufferWindowMemory(
+        input_key="input", memory_key="chat_history", return_messages=True, k=5
     )
+    # Rebuild context from stored messages so it survives server restarts
+    if seed_messages:
+        for i in range(0, len(seed_messages) - 1, 2):
+            user_msg = seed_messages[i]
+            ai_msg = seed_messages[i + 1] if i + 1 < len(seed_messages) else None
+            if user_msg.get("role") == "user" and ai_msg and ai_msg.get("role") == "assistant":
+                mem.save_context(
+                    {"input": user_msg["content"]},
+                    {"output": ai_msg["content"]},
+                )
     _memories[mid] = mem
     return mem, mid

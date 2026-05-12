@@ -29,7 +29,15 @@ async def get_current_user(
             }
         return DEV_USER
 
-    # If a Bearer token is present, verify it with Supabase
+    # 1. Fall back to x-user-id header first (High performance, used by frontend)
+    if x_user_id:
+        return {
+            "id": x_user_id,
+            "name": x_user_name or "User",
+            "email": x_user_email or f"user{x_user_id}@studymate.ai",
+        }
+
+    # 2. If no header, and a Bearer token is present, verify it with Supabase
     if token:
         try:
             verify_client = auth_client if auth_client is not None else client
@@ -38,17 +46,14 @@ async def get_current_user(
             if user:
                 return user
         except Exception:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication")
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unauthorized")
+            pass
 
-    # No Bearer token: fall back to x-user-id header (e.g. passed by the frontend session)
-    if x_user_id:
-        return {
-            "id": x_user_id,
-            "name": x_user_name or "User",
-            "email": x_user_email or f"user{x_user_id}@studymate.ai",
-        }
+    # 3. Last resort: default dev user if everything is missing
+    if client is None:
+        return DEV_USER
 
+    if token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication")
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
 
 

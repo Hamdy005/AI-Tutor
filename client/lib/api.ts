@@ -12,7 +12,7 @@ export interface Material {
   title: string
   source_type: 'pdf' | 'url' | 'topic'
   topic?: string
-  status: 'processing' | 'ready' | 'error'
+  status: 'pending' | 'processing' | 'ready' | 'error' | 'failed'
   created_at: string
   updated_at: string
 }
@@ -45,15 +45,30 @@ export interface QuizResult {
   }[]
 }
 
+export interface ChatSession {
+  id: string
+  title: string
+  material_id: string
+  user_id: string
+  created_at: string
+  updated_at: string
+}
+
 async function fetchAPI<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
+  const userStr = typeof window !== 'undefined' ? localStorage.getItem('auth_user') : null
+  let userId = ''
+  try {
+    if (userStr) userId = JSON.parse(userStr).id || ''
+  } catch {}
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...(token && { Authorization: `Bearer ${token}` }),
+    ...(userId && { 'X-User-Id': userId }),
     ...options.headers,
   }
 
@@ -95,6 +110,11 @@ export const materialsAPI = {
 
   uploadPDF: async (file: File): Promise<{ material_id: string; title: string; chunks_count: number }> => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
+    const userStr = typeof window !== 'undefined' ? localStorage.getItem('auth_user') : null
+    let userId = ''
+    try {
+      if (userStr) userId = JSON.parse(userStr).id || ''
+    } catch {}
     const formData = new FormData()
     formData.append('file', file)
 
@@ -102,6 +122,7 @@ export const materialsAPI = {
       method: 'POST',
       headers: {
         ...(token && { Authorization: `Bearer ${token}` }),
+        ...(userId && { 'X-User-Id': userId }),
       },
       body: formData,
     })
@@ -120,14 +141,86 @@ export const materialsAPI = {
       body: JSON.stringify({ url }),
     }),
 
+  addTopic: (topic: string) =>
+    fetchAPI<{ material_id: string; title: string }>('/api/materials/topic', {
+      method: 'POST',
+      body: JSON.stringify({ topic }),
+    }),
+
   summarize: (material_id: string) =>
     fetchAPI<{ summary: string; time_taken: number }>('/api/materials/summarize', {
       method: 'POST',
       body: JSON.stringify({ material_id }),
     }),
 
+  get: (material_id: string) =>
+    fetchAPI<Material>(`/api/materials/${material_id}`),
+
   getSummary: (material_id: string) =>
     fetchAPI<{ summary: string; time_taken: number }>(`/api/materials/${material_id}/summary`),
+
+  delete: (material_id: string) =>
+    fetchAPI<{ status: string }>(`/api/materials/${material_id}`, { method: 'DELETE' }),
+
+  rename: (material_id: string, title: string) =>
+    fetchAPI<{ status: string }>(`/api/materials/${material_id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    }),
+
+  bulkDelete: (material_ids: string[]) =>
+    fetchAPI<{ status: string }>('/api/materials/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ material_ids }),
+    }),
+}
+
+export const tutorAPI = {
+  ask: (query: string, source_type: string, material_id?: string, session_id?: string) =>
+    fetchAPI<{ answer: string; source: string; time_taken: number; memory_id: string }>('/api/tutor/ask', {
+      method: 'POST',
+      body: JSON.stringify({ query, source_type, material_id, session_id }),
+    }),
+
+  // Session management
+  listSessions: (material_id: string) =>
+    fetchAPI<ChatSession[]>(`/api/tutor/sessions?material_id=${material_id}`),
+
+  createSession: (material_id: string, title?: string) =>
+    fetchAPI<ChatSession>('/api/tutor/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ material_id, title }),
+    }),
+
+  deleteSession: (session_id: string) =>
+    fetchAPI<{ status: string }>(`/api/tutor/sessions/${session_id}`, { method: 'DELETE' }),
+
+  renameSession: (session_id: string, title: string) =>
+    fetchAPI<{ status: string }>(`/api/tutor/sessions/${session_id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    }),
+
+  extractTitle: (session_id: string, query: string) =>
+    fetchAPI<{ status: string; title: string }>(`/api/tutor/sessions/${session_id}/extract-title`, {
+      method: 'POST',
+      body: JSON.stringify({ query }),
+    }),
+
+  getSessionMessages: (session_id: string) =>
+    fetchAPI<{ id: string; role: string; content: string; created_at: string }[]>(
+      `/api/tutor/sessions/${session_id}/messages`
+    ),
+
+  // Legacy save/load
+  saveChat: (material_id: string, messages: ChatMessage[]) =>
+    fetchAPI<{ status: string }>('/api/tutor/chat/save', {
+      method: 'POST',
+      body: JSON.stringify({ material_id, messages }),
+    }),
+
+  loadChat: (material_id: string) =>
+    fetchAPI<{ messages: ChatMessage[] }>(`/api/tutor/chat/${material_id}`),
 }
 
 export const quizAPI = {
@@ -148,14 +241,15 @@ export const quizAPI = {
     const params = material_id ? `?material_id=${material_id}` : ''
     return fetchAPI<any[]>(`/api/quiz/list${params}`)
   },
-}
 
-export const tutorAPI = {
-  ask: (query: string, source_type: string, material_id?: string, memory_id?: string) =>
-    fetchAPI<{ answer: string; source: string; time_taken: number; memory_id: string }>('/api/tutor/ask', {
+  saveResult: (quiz_id: string, result_data: Record<string, unknown>) =>
+    fetchAPI<{ status: string }>('/api/quiz/save-result', {
       method: 'POST',
-      body: JSON.stringify({ query, source_type, material_id, memory_id }),
+      body: JSON.stringify({ quiz_id, result_data }),
     }),
+
+  getResults: (quiz_id: string) =>
+    fetchAPI<any[]>(`/api/quiz/results/${quiz_id}`),
 }
 
 

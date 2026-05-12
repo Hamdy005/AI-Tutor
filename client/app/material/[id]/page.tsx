@@ -17,8 +17,17 @@ import {
   CheckCircle2,
   XCircle,
   ChevronRight,
+  ChevronDown,
   SquarePen,
   Printer,
+  MessageSquarePlus,
+  Pencil,
+  Trash2,
+  Plus,
+  Minus,
+  PanelLeftClose,
+  PanelLeft,
+  MoreHorizontal,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,10 +38,57 @@ import { Badge } from '@/components/ui/badge'
 import { Slider } from '@/components/ui/slider'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
+import { Separator } from '@/components/ui/separator'
 import { UserDropdown } from '@/components/user-dropdown'
 import { materialsAPI, tutorAPI, quizAPI } from '@/lib/api'
-import type { Material, ChatMessage, QuizQuestion, QuizResult } from '@/lib/api'
+import type { Material, ChatMessage, QuizQuestion, QuizResult, ChatSession } from '@/lib/api'
+
+function renderMarkdown(text: string) {
+  const lines = text.split('\n')
+  const elements: React.ReactNode[] = []
+  let key = 0
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const trimmed = line.trim()
+    if (trimmed.startsWith('### ')) {
+      elements.push(<h3 key={key++} className="font-bold text-base mt-3 mb-1">{trimmed.slice(4)}</h3>)
+    } else if (trimmed.startsWith('## ')) {
+      elements.push(<h2 key={key++} className="font-bold text-lg mt-4 mb-2">{trimmed.slice(3)}</h2>)
+    } else if (trimmed.startsWith('# ')) {
+      elements.push(<h1 key={key++} className="font-bold text-xl mt-4 mb-2">{trimmed.slice(2)}</h1>)
+    } else if (trimmed.startsWith('- ')) {
+      const content = trimmed.slice(2).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      elements.push(<li key={key++} className="ml-4 list-disc text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: content }} />)
+    } else if (trimmed.match(/^\d+\.\s/)) {
+      const content = trimmed.replace(/^\d+\.\s/, '').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      elements.push(<li key={key++} className="ml-4 list-decimal text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: content }} />)
+    } else if (trimmed === '') {
+      elements.push(<div key={key++} className="h-2" />)
+    } else {
+      const content = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      elements.push(<p key={key++} className="text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: content }} />)
+    }
+  }
+  return elements
+}
 
 function printAsPDF(title: string, contentHtml: string) {
   const win = window.open('', '_blank')
@@ -46,26 +102,56 @@ function printAsPDF(title: string, contentHtml: string) {
     <head>
       <title>${title}</title>
       <style>
-        body { font-family: system-ui, sans-serif; padding: 40px; color: #1a1a2e; line-height: 1.6; }
-        h1 { font-size: 24px; margin-bottom: 8px; }
-        .meta { color: #666; font-size: 14px; margin-bottom: 24px; }
-        hr { border: none; border-top: 1px solid #e2e8f0; margin: 16px 0; }
-        .question { margin-bottom: 20px; }
-        .question h3 { font-size: 16px; margin-bottom: 8px; }
-        .option { padding: 4px 0; }
-        .correct { color: #16a34a; font-weight: 600; }
-        .incorrect { color: #dc2626; }
-        .stats { display: flex; gap: 24px; margin-bottom: 24px; }
-        .stat { text-align: center; }
-        .stat-value { font-size: 28px; font-weight: 700; }
-        .stat-label { font-size: 12px; color: #666; }
-        @media print { body { padding: 20px; } }
+        body { font-family: system-ui, -apple-system, sans-serif; padding: 40px; color: #1a1a2e; line-height: 1.6; background: #ffffff; }
+        h1 { font-size: 24px; margin-bottom: 8px; color: #0f172a; }
+        .meta { color: #64748b; font-size: 14px; margin-bottom: 24px; }
+        hr { border: none; border-top: 1px solid #e2e8f0; margin: 24px 0; }
+        
+        /* Chat Styles */
+        .chat-msg { margin-bottom: 16px; padding: 12px 16px; border-radius: 12px; max-width: 90%; }
+        .chat-user { background: #4f46e5; color: #ffffff; margin-left: auto; }
+        .chat-ai { background: #f1f5f9; color: #1a1a2e; margin-right: auto; }
+        .chat-role { font-weight: 700; font-size: 12px; margin-bottom: 4px; display: block; text-transform: uppercase; letter-spacing: 0.05em; }
+        
+        /* Quiz Styles */
+        .stats { display: flex; gap: 16px; margin-bottom: 32px; }
+        .stat { flex: 1; text-align: center; padding: 16px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0; }
+        .stat-value { font-size: 24px; font-weight: 700; color: #0f172a; }
+        .stat-label { font-size: 12px; color: #64748b; margin-top: 4px; }
+        .stat.success { background: #f0fdf4; border-color: #bbf7d0; }
+        .stat.success .stat-value { color: #16a34a; }
+        .stat.error { background: #fef2f2; border-color: #fecaca; }
+        .stat.error .stat-value { color: #dc2626; }
+        
+        .question-card { margin-bottom: 20px; padding: 16px; border-radius: 12px; border: 1px solid #e2e8f0; }
+        .question-card.correct { background: #f0fdf4; border-color: #bbf7d0; }
+        .question-card.incorrect { background: #fef2f2; border-color: #fecaca; }
+        .question-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+        .q-badge { font-size: 10px; padding: 2px 8px; border-radius: 99px; background: #e2e8f0; color: #475569; font-weight: 600; }
+        .q-text { font-weight: 600; color: #0f172a; margin: 0; }
+        .option { padding: 4px 0; padding-left: 20px; color: #334155; }
+        .result-text { margin-top: 12px; font-size: 14px; font-weight: 600; }
+        .result-text.correct { color: #16a34a; }
+        .result-text.incorrect { color: #dc2626; }
+        
+        /* Summary Styles */
+        .summary-h2 { font-size: 20px; color: #4f46e5; margin-top: 32px; margin-bottom: 12px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.025em; }
+        .summary-h4 { font-size: 16px; color: #1e293b; margin-top: 16px; margin-bottom: 8px; font-weight: 700; }
+        .summary-h4 span { color: #4f46e5; margin-right: 8px; }
+        .summary-p { margin-bottom: 12px; color: #334155; font-size: 15px; }
+        .summary-list-item { margin-left: 0; margin-bottom: 10px; color: #334155; padding-left: 20px; position: relative; font-size: 15px; }
+        .summary-list-item::before { content: "•"; position: absolute; left: 0; color: #1a1a2e; font-weight: bold; }
+        .topic-bold { font-weight: 700; color: #0f172a; }
+        
+        @media print { 
+          body { padding: 0; }
+          .stat, .question-card, .chat-msg { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
       </style>
     </head>
     <body>
       <h1>${title}</h1>
       <div class="meta">Exported from Study Mate on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
-      <hr>
       ${contentHtml}
       <hr>
       <div class="meta" style="text-align: center;">Generated by Study Mate - AI-Powered Learning</div>
@@ -90,24 +176,89 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
 
   const [material, setMaterial] = useState<Material | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [renameInput, setRenameInput] = useState('')
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
+  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false)
 
   useEffect(() => {
-    const stored = localStorage.getItem('materials')
-    if (stored) {
-      const materials: Material[] = JSON.parse(stored)
-      const found = materials.find((m) => m.id === id)
-      if (found) {
-        setMaterial(found)
-      }
+    if (id.startsWith('temp-')) {
+      setIsLoading(false)
+      return
     }
-    setIsLoading(false)
+    const loadMaterial = async () => {
+      // 1. Try cached_materials for instant display
+      const stored = localStorage.getItem('cached_materials')
+      if (stored) {
+        try {
+          const materials: Material[] = JSON.parse(stored)
+          const found = materials.find((m) => m.id === id)
+          if (found) setMaterial(found)
+        } catch { }
+      }
+      // 2. Also fetch fresh data from API to get the real title/status
+      try {
+        const fresh = await materialsAPI.get(id)
+        if (fresh) setMaterial(fresh)
+      } catch {
+        // API unavailable, localStorage version is fine
+      }
+      setIsLoading(false)
+    }
+    loadMaterial()
   }, [id])
 
   const handleTabChange = (value: string) => {
     router.push(`/material/${id}?tab=${value}`, { scroll: false })
   }
 
-  if (isLoading) {
+  const handleRename = async () => {
+    if (!renameInput.trim() || !material) return
+    try {
+      await materialsAPI.rename(material.id, renameInput.trim())
+      setMaterial({ ...material, title: renameInput.trim() })
+      const cached = localStorage.getItem('cached_materials')
+      if (cached) {
+        const materials: Material[] = JSON.parse(cached)
+        const updated = materials.map((m) =>
+          m.id === material.id ? { ...m, title: renameInput.trim() } : m
+        )
+        localStorage.setItem('cached_materials', JSON.stringify(updated))
+      }
+      toast.success('Material renamed!')
+    } catch {
+      toast.error('Failed to rename material')
+    } finally {
+      setIsRenaming(false)
+      setRenameInput('')
+    }
+  }
+
+  const handleDeleteMaterial = async () => {
+    if (!material) return
+    setIsDeleting(true)
+    try {
+      if (!material.id.startsWith('temp-') && !material.id.startsWith('topic-')) {
+        await materialsAPI.delete(material.id)
+      }
+      const cached = localStorage.getItem('cached_materials')
+      if (cached) {
+        const materials: Material[] = JSON.parse(cached)
+        localStorage.setItem('cached_materials', JSON.stringify(materials.filter((m) => m.id !== material.id)))
+      }
+      toast.success('Material deleted')
+      router.push('/dashboard')
+    } catch {
+      toast.error('Failed to delete material')
+    } finally {
+      setIsDeleting(false)
+      setIsDeleteDialogOpen(false)
+    }
+  }
+
+  if (isLoading && !material) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -131,6 +282,9 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
 
   const sourceType = sourceTypeConfig[material.source_type] || sourceTypeConfig.pdf
   const SourceIcon = sourceType.icon
+  const isTopic = material.source_type === 'topic'
+  const topic = material.topic || material.title
+  const resolvedTab = isTopic && (activeTab === 'summary' || activeTab === '') ? 'chat' : activeTab
 
   return (
     <div className="min-h-screen bg-background">
@@ -164,10 +318,49 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
             <div className={`p-3 rounded-xl ${sourceType.color}`}>
               <SourceIcon className="w-6 h-6" />
             </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
-                {material.title}
-              </h1>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                {isRenaming ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={renameInput}
+                      onChange={(e) => setRenameInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleRename()
+                        if (e.key === 'Escape') { setIsRenaming(false); setRenameInput('') }
+                      }}
+                      className="text-xl font-bold h-10 w-64"
+                      autoFocus
+                    />
+                    <Button size="sm" onClick={handleRename} disabled={!renameInput.trim()}>
+                      Save
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setIsRenaming(false); setRenameInput('') }}>
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <h1 className="text-2xl sm:text-3xl font-bold text-foreground truncate">
+                      {material.title}
+                    </h1>
+                    <button
+                      onClick={() => { setIsRenaming(true); setRenameInput(material.title) }}
+                      className="p-1.5 rounded-lg hover:bg-muted transition-colors flex-shrink-0"
+                      title="Rename"
+                    >
+                      <Pencil className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+                    </button>
+                    <button
+                      onClick={() => setIsDeleteDialogOpen(true)}
+                      className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors flex-shrink-0"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive" />
+                    </button>
+                  </>
+                )}
+              </div>
               <div className="flex items-center gap-2 mt-2">
                 <Badge variant="secondary" className={sourceType.color}>
                   {sourceType.label}
@@ -180,62 +373,160 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="mt-6">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="summary" className="gap-2">
-              <Sparkles className="h-4 w-4" />
-              <span className="hidden sm:inline">Summary</span>
-            </TabsTrigger>
-            <TabsTrigger value="chat" className="gap-2">
+        <Tabs value={resolvedTab} onValueChange={handleTabChange} className="mt-6">
+          <TabsList className={`grid w-full ${isTopic ? 'grid-cols-2' : 'grid-cols-3'}`}>
+            {!isTopic && (
+              <TabsTrigger value="summary" className="gap-2 hover:bg-primary/5 transition-colors">
+                <Sparkles className="h-4 w-4" />
+                <span className="hidden sm:inline">Summary</span>
+              </TabsTrigger>
+            )}
+            <TabsTrigger value="chat" className="gap-2 hover:bg-primary/5 transition-colors">
               <MessageSquare className="h-4 w-4" />
               <span className="hidden sm:inline">Chat</span>
             </TabsTrigger>
-            <TabsTrigger value="quiz" className="gap-2">
+            <TabsTrigger value="quiz" className="gap-2 hover:bg-primary/5 transition-colors">
               <Brain className="h-4 w-4" />
               <span className="hidden sm:inline">Quiz</span>
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="summary" className="mt-6">
-            <SummaryTab materialId={id} sourceType={material.source_type} materialTitle={material.title} />
-          </TabsContent>
+          {!isTopic && (
+            <TabsContent value="summary" className="mt-6">
+              <SummaryTab
+                materialId={id}
+                sourceType={material.source_type}
+                materialTitle={material.title}
+                isGenerating={isGeneratingSummary}
+                setIsGenerating={setIsGeneratingSummary}
+              />
+            </TabsContent>
+          )}
 
           <TabsContent value="chat" className="mt-6">
             <ChatTab materialId={id} sourceType={material.source_type} topic={material.topic} materialTitle={material.title} />
           </TabsContent>
 
           <TabsContent value="quiz" className="mt-6">
-            <QuizTab materialId={id} sourceType={material.source_type} topic={material.topic} materialTitle={material.title} />
+            <QuizTab
+              materialId={id}
+              sourceType={material.source_type}
+              topic={material.topic}
+              materialTitle={material.title}
+              isGenerating={isGeneratingQuiz}
+              setIsGenerating={setIsGeneratingQuiz}
+            />
           </TabsContent>
         </Tabs>
       </main>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Material</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this material? All associated chats, summaries, and quizzes will be permanently removed. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault()
+                handleDeleteMaterial()
+              }}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
 
-function SummaryTab({ materialId, sourceType, materialTitle }: { materialId: string; sourceType: string; materialTitle: string }) {
+function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIsGenerating }: {
+  materialId: string
+  sourceType: string
+  materialTitle: string
+  isGenerating: boolean
+  setIsGenerating: (v: boolean) => void
+}) {
   const [summary, setSummary] = useState<string | null>(null)
-  const [isGenerating, setIsGenerating] = useState(false)
   const [isLoadingExisting, setIsLoadingExisting] = useState(true)
+
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const isMounted = useRef(true)
+
+  useEffect(() => {
+    isMounted.current = true
+    return () => { isMounted.current = false }
+  }, [])
+
+  const startSummaryPoller = () => {
+    if (pollingRef.current) return
+    pollingRef.current = setInterval(async () => {
+      try {
+        const result = await materialsAPI.getSummary(materialId)
+        if (result.summary && isMounted.current) {
+          setSummary(result.summary)
+          setIsGenerating(false)
+          localStorage.removeItem(`generating_summary_${materialId}`)
+          clearInterval(pollingRef.current!)
+          pollingRef.current = null
+        }
+      } catch { }
+    }, 4000)
+  }
 
   useEffect(() => {
     if (sourceType === 'topic') {
       setIsLoadingExisting(false)
       return
     }
-    const loadExisting = async () => {
+
+    const checkStatus = async () => {
+      // 1. Check if we should be generating (from localStorage)
+      const wasGenerating = localStorage.getItem(`generating_summary_${materialId}`) === 'true'
+      if (wasGenerating) {
+        setIsGenerating(true)
+        startSummaryPoller()
+      }
+
+      // 2. Load existing summary
       try {
         const result = await materialsAPI.getSummary(materialId)
         if (result.summary) {
           setSummary(result.summary)
+          if (wasGenerating) {
+            setIsGenerating(false)
+            localStorage.removeItem(`generating_summary_${materialId}`)
+            if (pollingRef.current) {
+              clearInterval(pollingRef.current)
+              pollingRef.current = null
+            }
+          }
         }
       } catch {
         // no existing summary
       } finally {
-        setIsLoadingExisting(false)
+        if (isMounted.current) setIsLoadingExisting(false)
       }
     }
-    loadExisting()
+    checkStatus()
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current)
+    }
   }, [materialId, sourceType])
 
   const generateSummary = async () => {
@@ -245,18 +536,26 @@ function SummaryTab({ materialId, sourceType, materialTitle }: { materialId: str
     }
 
     setIsGenerating(true)
+    localStorage.setItem(`generating_summary_${materialId}`, 'true')
+    startSummaryPoller() // Start polling in case we navigate away and back
+
     try {
       const result = await materialsAPI.summarize(materialId)
-      setSummary(result.summary)
-      toast.success('Summary generated!')
+      if (isMounted.current) {
+        setSummary(result.summary)
+        toast.success('Summary generated!')
+      }
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-      setSummary(
-        `**Overview**\n\nThis material covers key concepts and foundational knowledge about the subject. Here is a comprehensive breakdown of the main topics discussed.\n\n**Key Concepts:**\n- Core principles and fundamental theories\n- Practical applications and real-world examples\n- Common challenges and best practices\n\n**Main Takeaways:**\n1. Understanding the foundational elements is crucial for advanced study\n2. Practical application reinforces theoretical knowledge\n3. Regular practice leads to mastery of the subject matter`
-      )
-      toast.success('Summary generated!')
+      toast.error('Failed to generate summary. Please try again.')
     } finally {
-      setIsGenerating(false)
+      if (isMounted.current) {
+        setIsGenerating(false)
+        localStorage.removeItem(`generating_summary_${materialId}`)
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current)
+          pollingRef.current = null
+        }
+      }
     }
   }
 
@@ -265,13 +564,46 @@ function SummaryTab({ materialId, sourceType, materialTitle }: { materialId: str
     const html = summary
       .split('\n')
       .map((p) => {
-        if (p.startsWith('**') && p.endsWith('**')) return `<h2>${p.replace(/\*\*/g, '')}</h2>`
-        if (p.startsWith('- **')) {
-          const content = p.replace(/^- \*\*/, '').replace(/\*\*:/, ':')
-          return `<p><strong>${content}</strong></p>`
+        const trimmed = p.trim()
+        if (!trimmed) return ''
+
+        // Headers
+        if (trimmed.startsWith('####')) {
+          const content = trimmed.replace(/^#+\s+/, '')
+          const hasNumbering = /^\d+[\.\-]/.test(content)
+          return `<h4 class="summary-h4">${hasNumbering ? '' : '<span>•</span>'}${content}</h4>`
         }
-        if (p.match(/^\d+\./)) return `<p style="margin-left:16px">${p}</p>`
-        return p ? `<p>${p}</p>` : ''
+        if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+          return `<h2 class="summary-h2">${trimmed.replace(/\*\*/g, '')}</h2>`
+        }
+        if (trimmed.startsWith('###')) {
+          return `<h2 class="summary-h2">${trimmed.replace(/^#+\s+/, '')}</h2>`
+        }
+
+        // List item with potential bold topic
+        if (trimmed.startsWith('- ')) {
+          let content = trimmed.slice(2)
+          if (content.includes('**')) {
+            content = content.replace(/\*\*(.*?)\*\*/g, '<span class="topic-bold">$1</span>')
+          }
+          return `<div class="summary-list-item">${content}</div>`
+        }
+
+        // Numbered list
+        if (trimmed.match(/^\d+\./)) {
+          let content = trimmed
+          if (content.includes('**')) {
+            content = content.replace(/\*\*(.*?)\*\*/g, '<span class="topic-bold">$1</span>')
+          }
+          return `<div class="summary-list-item">${content}</div>`
+        }
+
+        // Paragraph with potential bold
+        let pContent = trimmed
+        if (pContent.includes('**')) {
+          pContent = pContent.replace(/\*\*(.*?)\*\*/g, '<span class="topic-bold">$1</span>')
+        }
+        return `<p class="summary-p">${pContent}</p>`
       })
       .join('')
     printAsPDF(`Summary - ${materialTitle}`, html)
@@ -319,7 +651,19 @@ function SummaryTab({ materialId, sourceType, materialTitle }: { materialId: str
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-      {!summary ? (
+      {isGenerating ? (
+        <Card className="text-center py-16">
+          <CardContent>
+            <div className="w-16 h-16 mx-auto bg-primary/10 rounded-2xl flex items-center justify-center mb-6">
+              <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground mb-2">Generating Summary</h3>
+            <p className="text-muted-foreground max-w-md mx-auto">
+              AI is generating a summary of your material. This may take a while...
+            </p>
+          </CardContent>
+        </Card>
+      ) : !summary ? (
         <Card className="text-center py-12">
           <CardContent>
             <div className="w-16 h-16 mx-auto bg-primary/10 rounded-2xl flex items-center justify-center mb-6">
@@ -330,11 +674,7 @@ function SummaryTab({ materialId, sourceType, materialTitle }: { materialId: str
               Let AI analyze your material and create a comprehensive summary with key points and insights.
             </p>
             <Button onClick={generateSummary} disabled={isGenerating} size="lg">
-              {isGenerating ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating...</>
-              ) : (
-                <><Sparkles className="mr-2 h-4 w-4" />Generate Summary</>
-              )}
+              <Sparkles className="mr-2 h-4 w-4" />Generate Summary
             </Button>
           </CardContent>
         </Card>
@@ -351,30 +691,112 @@ function SummaryTab({ materialId, sourceType, materialTitle }: { materialId: str
             </Button>
           </CardHeader>
           <CardContent>
-            <div className="prose prose-slate dark:prose-invert max-w-none">
-              {summary.split('\n').map((paragraph, index) => {
-                if (paragraph.startsWith('**') && paragraph.endsWith('**')) {
+            <div className="space-y-8">
+              {(() => {
+                const lines = summary.split('\n')
+                const sections: { title: string; level: number; content: string[] }[] = []
+                let currentSection: { title: string; level: number; content: string[] } | null = null
+
+                let lastHeader = ''
+                lines.forEach(line => {
+                  const trimmed = line.trim()
+                  if (!trimmed) return
+
+                  // Parse headers (### or ####) or Bold titles as headers
+                  const headerMatch = line.match(/^(#{3,4})\s+(.+)/)
+                  const boldHeaderMatch = trimmed.startsWith('**') && trimmed.endsWith('**') && trimmed.length < 100
+                  const plainHeaderMatch = !headerMatch && !boldHeaderMatch && !trimmed.startsWith('- ') && !trimmed.match(/^\d+\.\s/) && trimmed.length < 80 && trimmed === trimmed.replace(/[:.?!]$/, '')
+
+                  if (headerMatch || boldHeaderMatch || plainHeaderMatch) {
+                    const level = headerMatch ? headerMatch[1].length : 3
+                    const title = headerMatch
+                      ? headerMatch[2].replace(/\*+/g, '').trim()
+                      : boldHeaderMatch
+                        ? trimmed.replace(/\*\*/g, '').trim()
+                        : trimmed
+                    const normalized = title.toLowerCase()
+                    if (normalized && normalized === lastHeader) {
+                      return
+                    }
+                    lastHeader = normalized
+                    currentSection = { title, level, content: [] }
+                    sections.push(currentSection)
+                  } else if (currentSection) {
+                    currentSection.content.push(line)
+                  } else if (sections.length === 0) {
+                    // Handle text before any header
+                    currentSection = { title: 'Overview', level: 3, content: [line] }
+                    sections.push(currentSection)
+                  } else {
+                    sections[sections.length - 1].content.push(line)
+                  }
+                })
+
+                return sections.map((section, idx) => {
+                  const isMajor = section.level === 3 || section.title.toLowerCase().includes('summary') || section.title.toLowerCase().includes('overview')
+
+                  if (isMajor) {
+                    return (
+                      <div key={idx} className="py-6">
+                        {/* Centered Header with Lines */}
+                        <div className="flex items-center gap-4 mb-8">
+                          <div className="h-px flex-1 bg-gradient-to-r from-transparent to-primary/50" />
+                          <h3 className="text-2xl font-bold text-primary px-4 whitespace-nowrap tracking-wide uppercase">
+                            {section.title}
+                          </h3>
+                          <div className="h-px flex-1 bg-gradient-to-l from-transparent to-primary/50" />
+                        </div>
+                        
+                        <div className="space-y-4 max-w-3xl mx-auto px-4">
+                          {section.content.map((line, lIdx) => (
+                            <p key={lIdx} className="text-lg text-foreground leading-relaxed text-center">
+                              {line.split('**').map((part, i) => 
+                                i % 2 === 1 ? <strong key={i} className="text-foreground">{part}</strong> : part
+                              )}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  // Sub-header as Collapsible Box (Accordion Style)
                   return (
-                    <h3 key={index} className="text-lg font-semibold mt-6 mb-2 text-foreground">
-                      {paragraph.replace(/\*\*/g, '')}
-                    </h3>
+                    <div key={idx} className="max-w-4xl mx-auto px-4 mb-4">
+                      <Collapsible className="group">
+                        <CollapsibleTrigger className="flex w-full items-center justify-between p-4 rounded-xl border border-border bg-card/50 hover:bg-muted/50 transition-all text-left shadow-sm">
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-primary/10 text-primary group-data-[state=open]:rotate-180 transition-transform">
+                              <ChevronDown className="h-4 w-4" />
+                            </div>
+                            <span className="text-lg font-bold text-foreground">{section.title}</span>
+                          </div>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="px-6 py-4 space-y-4 border-x border-b rounded-b-xl bg-card/30">
+                          {section.content.map((line, lIdx) => {
+                            const tLine = line.trim()
+                            if (tLine.startsWith('- ')) {
+                              return (
+                                <div key={lIdx} className="flex gap-3 items-start text-lg text-foreground leading-relaxed">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-primary/40 mt-2 flex-shrink-0" />
+                                  <span>{tLine.replace(/^- /, '')}</span>
+                                </div>
+                              )
+                            }
+                            return (
+                              <p key={lIdx} className="text-lg text-foreground leading-relaxed">
+                                {line.split('**').map((part, i) => 
+                                  i % 2 === 1 ? <strong key={i} className="text-foreground">{part}</strong> : part
+                                )}
+                              </p>
+                            )
+                          })}
+                        </CollapsibleContent>
+                      </Collapsible>
+                    </div>
                   )
-                }
-                if (paragraph.startsWith('- **')) {
-                  const content = paragraph.replace(/^- \*\*/, '').replace(/\*\*:/, ':')
-                  const [title, ...rest] = content.split(':')
-                  return (
-                    <p key={index} className="flex items-start gap-2 text-foreground">
-                      <ChevronRight className="h-4 w-4 mt-1 text-primary flex-shrink-0" />
-                      <span><strong>{title}:</strong>{rest.join(':')}</span>
-                    </p>
-                  )
-                }
-                if (paragraph.match(/^\d+\./)) {
-                  return <p key={index} className="ml-4 text-foreground">{paragraph}</p>
-                }
-                return paragraph ? <p key={index} className="text-foreground leading-relaxed">{paragraph}</p> : null
-              })}
+                })
+              })()}
             </div>
           </CardContent>
         </Card>
@@ -383,29 +805,117 @@ function SummaryTab({ materialId, sourceType, materialTitle }: { materialId: str
   )
 }
 
-function ChatTab({ materialId, sourceType, topic, materialTitle }: { materialId: string; sourceType: string; topic?: string; materialTitle: string }) {
+function ChatTab({ materialId, sourceType, topic, materialTitle }: {
+  materialId: string
+  sourceType: string
+  topic?: string
+  materialTitle: string
+}) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [sessions, setSessions] = useState<ChatSession[]>([])
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [memoryId, setMemoryId] = useState<string | undefined>()
+  const [isSessionsLoading, setIsSessionsLoading] = useState(true)
+  const [isCreatingSession, setIsCreatingSession] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
+  const [renameSessionInput, setRenameSessionInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const chatStorageKey = `chat_${materialId}`
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const isMounted = useRef(true)
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(chatStorageKey)
-      if (stored) {
-        setMessages(JSON.parse(stored))
+    isMounted.current = true
+    return () => { isMounted.current = false }
+  }, [])
+
+  const startChatPoller = (sid: string) => {
+    if (pollingRef.current) return
+    pollingRef.current = setInterval(async () => {
+      try {
+        const data = await tutorAPI.getSessionMessages(sid)
+        const formatted: ChatMessage[] = data.map((m: any) => ({
+          role: m.role,
+          content: m.content
+        }))
+        
+        // If the last message is from assistant, we are done
+        if (formatted.length > 0 && formatted[formatted.length - 1].role === 'assistant') {
+          if (isMounted.current) {
+            setMessages(formatted)
+            setIsLoading(false)
+            localStorage.removeItem(`waiting_chat_${sid}`)
+            clearInterval(pollingRef.current!)
+            pollingRef.current = null
+          }
+        }
+      } catch { }
+    }, 3000)
+  }
+
+  useEffect(() => {
+    const loadSessions = async () => {
+      try {
+        const data = await tutorAPI.listSessions(materialId)
+        setSessions(data)
+        if (data.length > 0) {
+          setCurrentSessionId(data[0].id)
+        }
+      } catch (err) {
+        console.error('Failed to load sessions', err)
+      } finally {
+        setIsSessionsLoading(false)
       }
-    } catch {}
-  }, [chatStorageKey])
+    }
+    loadSessions()
+  }, [materialId])
 
   useEffect(() => {
-    try {
-      localStorage.setItem(chatStorageKey, JSON.stringify(messages))
-    } catch {}
-  }, [messages, chatStorageKey])
+    if (currentSessionId) {
+      const loadMessages = async () => {
+        const sid = currentSessionId!
+        
+        // Check if we were waiting for a response in this session
+        const wasWaiting = localStorage.getItem(`waiting_chat_${sid}`) === 'true'
+        if (wasWaiting) {
+          setIsLoading(true)
+          startChatPoller(sid)
+        }
+
+        try {
+          const data = await tutorAPI.getSessionMessages(sid)
+          const formatted: ChatMessage[] = data.map((m: any) => ({
+            role: m.role,
+            content: m.content
+          }))
+          
+          if (isMounted.current) {
+            setMessages(formatted)
+            
+            // If we were waiting but the assistant message is already here
+            if (wasWaiting && formatted.length > 0 && formatted[formatted.length - 1].role === 'assistant') {
+              setIsLoading(false)
+              localStorage.removeItem(`waiting_chat_${sid}`)
+              if (pollingRef.current) {
+                clearInterval(pollingRef.current)
+                pollingRef.current = null
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Failed to load messages', err)
+        }
+      }
+      loadMessages()
+    } else {
+      setMessages([])
+    }
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current)
+    }
+  }, [currentSessionId])
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -413,472 +923,813 @@ function ChatTab({ materialId, sourceType, topic, materialTitle }: { materialId:
     }
   }, [messages])
 
-  const handleSend = async () => {
+  const createNewSession = async () => {
+    setIsCreatingSession(true)
+    try {
+      const newSession = await tutorAPI.createSession(materialId, 'Untitled Chat')
+      setSessions([newSession, ...sessions])
+      setCurrentSessionId(newSession.id)
+      setMessages([])
+    } catch (err) {
+      toast.error('Failed to create new session')
+    } finally {
+      setIsCreatingSession(false)
+    }
+  }
+
+  const deleteSession = async (sid: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await tutorAPI.deleteSession(sid)
+      const updated = sessions.filter(s => s.id !== sid)
+      setSessions(updated)
+      if (currentSessionId === sid) {
+        setCurrentSessionId(updated.length > 0 ? updated[0].id : null)
+      }
+      localStorage.removeItem(`waiting_chat_${sid}`)
+      toast.success('Session deleted')
+    } catch (err) {
+      toast.error('Failed to delete session')
+    }
+  }
+
+  const renameSession = async (sid: string, title: string) => {
+    if (!title.trim()) return
+    try {
+      await tutorAPI.renameSession(sid, title.trim())
+      setSessions(prev => prev.map(s => s.id === sid ? { ...s, title: title.trim() } : s))
+      toast.success('Session renamed')
+    } catch {
+      toast.error('Failed to rename session')
+    } finally {
+      setRenamingSessionId(null)
+      setRenameSessionInput('')
+    }
+  }
+
+  const sendMessage = async () => {
     if (!input.trim() || isLoading) return
 
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input.trim(),
-      timestamp: new Date().toISOString(),
+    let sessionId = currentSessionId
+    if (!sessionId) {
+      try {
+        const newSession = await tutorAPI.createSession(materialId, 'Untitled Chat')
+        setSessions([newSession])
+        setCurrentSessionId(newSession.id)
+        sessionId = newSession.id
+      } catch (err) {
+        toast.error('Failed to initialize chat')
+        return
+      }
     }
 
-    setMessages((prev) => [...prev, userMessage])
+    const currentInput = input.trim()
     setInput('')
+    setMessages((prev) => [...prev, { role: 'user', content: currentInput }])
     setIsLoading(true)
+    localStorage.setItem(`waiting_chat_${sessionId}`, 'true')
+    startChatPoller(sessionId) // Start polling in case we navigate away
 
     try {
-      const result = await tutorAPI.ask(
-        userMessage.content,
-        sourceType === 'topic' ? 'web' : sourceType,
-        sourceType !== 'topic' ? materialId : undefined,
-        memoryId
-      )
-      setMemoryId(result.memory_id)
-
-      const aiResponse: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: result.answer,
-        timestamp: new Date().toISOString(),
+      const data = await tutorAPI.ask(currentInput, sourceType, materialId, sessionId!)
+      if (isMounted.current && currentSessionId === sessionId) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: data.answer }])
+        
+        if (sessions.find(s => s.id === sessionId)?.title === 'Untitled Chat') {
+          try {
+            const titleData = await tutorAPI.extractTitle(sessionId!, currentInput)
+            setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, title: titleData.title } : s))
+          } catch { }
+        }
       }
-      setMessages((prev) => [...prev, aiResponse])
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 1200))
-      const aiResponse: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `That's an interesting question about "${userMessage.content.slice(0, 50)}..."\n\nBased on the available information, here are some key points to consider:\n\n1. **Context matters** - Understanding the broader topic helps frame the answer\n2. **Key concepts** - Focus on the fundamental principles first\n3. **Practical examples** - Real-world applications make abstract ideas concrete\n\nWould you like me to elaborate on any specific aspect of this topic?`,
-        timestamp: new Date().toISOString(),
-      }
-      setMessages((prev) => [...prev, aiResponse])
+      if (isMounted.current) toast.error('Failed to get response')
     } finally {
-      setIsLoading(false)
-      inputRef.current?.focus()
+      if (isMounted.current) {
+        setIsLoading(false)
+        localStorage.removeItem(`waiting_chat_${sessionId}`)
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current)
+          pollingRef.current = null
+        }
+      }
     }
   }
 
   const handleExportPDF = () => {
     if (messages.length === 0) return
-    const html = messages
-      .map(
-        (m) =>
-          `<div style="margin-bottom: 16px; padding: 12px; background: ${m.role === 'user' ? '#e8f0fe' : '#f5f5f5'}; border-radius: 8px;">
-            <strong>${m.role === 'user' ? 'You' : 'Study Mate'}:</strong>
-            <p style="margin: 4px 0 0; white-space: pre-wrap;">${m.content}</p>
-          </div>`
-      )
-      .join('')
-    printAsPDF(`Chat - ${materialTitle}`, html)
+    const currentTitle = sessions.find(s => s.id === currentSessionId)?.title || 'Chat'
+    const html = messages.map(m => `
+      <div class="chat-msg ${m.role === 'user' ? 'chat-user' : 'chat-ai'}">
+        <span class="chat-role">${m.role}</span>
+        <div>${m.content.replace(/\n/g, '<br>')}</div>
+      </div>
+    `).join('')
+    printAsPDF(`Chat Session - ${currentTitle}`, html)
   }
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-      <Card className="h-[600px] flex flex-col">
-        <CardHeader className="border-b flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-lg">Chat with Study Mate</CardTitle>
-            <CardDescription>
-              {sourceType === 'topic'
-                ? `Ask questions about ${topic || 'your topic'}`
-                : 'Ask questions about your learning material'}
-            </CardDescription>
+    <div className="h-[750px] flex flex-col overflow-hidden border border-border/50 shadow-sm bg-card rounded-xl">
+      {/* Header */}
+      <div className="px-4 border-b bg-slate-50 dark:bg-[#0e0e0e] h-20 flex items-center justify-between shrink-0 group">
+        <div className="flex items-center gap-3 min-w-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="h-8 w-8 p-0 hidden md:flex flex-shrink-0 hover:bg-muted"
+            title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+          >
+            {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
+          </Button>
+          <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px] h-5 flex-shrink-0 px-2 font-bold">LIVE</Badge>
+          <div className="flex items-center gap-1 min-w-0">
+            <span className="text-base font-semibold truncate text-foreground">
+              {(sessions.find(s => s.id === currentSessionId)?.title || 'Untitled Chat').slice(0, 50)}
+            </span>
+            {currentSessionId && (
+              <>
+                <button
+                  onClick={() => {
+                    const s = sessions.find(s => s.id === currentSessionId)
+                    if (s) { setRenamingSessionId(s.id); setRenameSessionInput(s.title) }
+                  }}
+                  className="p-1 rounded-lg hover:bg-muted transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
+                  title="Rename session"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+                </button>
+                <button
+                  onClick={(e) => deleteSession(currentSessionId, e as any)}
+                  className="p-1 rounded-lg hover:bg-destructive/10 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
+                  title="Delete session"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+                </button>
+              </>
+            )}
           </div>
-          {messages.length > 0 && (
-            <Button variant="outline" size="sm" onClick={handleExportPDF}>
-              <Printer className="mr-2 h-4 w-4" />
-              Export PDF
-            </Button>
-          )}
-        </CardHeader>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Button variant="ghost" size="sm" onClick={handleExportPDF} disabled={messages.length === 0} className="h-9 w-9 p-0 hover:bg-muted">
+            <Printer className="h-5 w-5" />
+          </Button>
+        </div>
+      </div>
 
-        <ScrollArea ref={scrollRef} className="flex-1 p-4">
-          {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center py-8">
-              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4">
-                <MessageSquare className="w-8 h-8 text-primary" />
-              </div>
-              <h3 className="font-semibold text-foreground mb-2">Start a conversation</h3>
-              <p className="text-sm text-muted-foreground max-w-sm">
-                {sourceType === 'topic'
-                  ? `Ask anything about ${topic || 'your topic'} and get detailed explanations.`
-                  : 'Ask any question about your material and get detailed explanations from Study Mate.'}
-              </p>
+      {/* Body */}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* Sidebar */}
+        {sidebarOpen && (
+          <div className="hidden md:flex flex-col w-60 border-r bg-slate-50 dark:bg-[#0e0e0e] min-h-0">
+            <div className="p-4 border-b">
+              <Button
+                onClick={createNewSession}
+                className="w-full justify-start gap-2 bg-background hover:bg-muted transition-colors"
+                variant="outline"
+                disabled={isCreatingSession}
+              >
+                <Plus className="h-4 w-4" />
+                New Chat
+              </Button>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <AnimatePresence>
-                {messages.map((message) => (
+            <div className="flex-1 overflow-y-auto px-3" style={{ scrollbarGutter: 'stable' }}>
+              <div className="space-y-1 py-3">
+                {isSessionsLoading ? (
+                  <div className="flex justify-center py-4">
+                    <Loader2 className="animate-spin h-5 w-5 text-muted-foreground" />
+                  </div>
+                ) : sessions.map((s) => (
+                  <div
+                    key={s.id}
+                    onClick={() => {
+                      if (renamingSessionId !== s.id) setCurrentSessionId(s.id)
+                    }}
+                    className={`group flex items-start justify-between p-2 rounded-lg cursor-pointer transition-all ${
+                      currentSessionId === s.id ? 'bg-primary/10 border-primary/20 border shadow-sm' : 'hover:bg-muted border border-transparent'
+                    }`}
+                  >
+                    {renamingSessionId === s.id ? (
+                      <div className="flex items-center gap-1 w-full" onClick={(e) => e.stopPropagation()}>
+                        <Input
+                          value={renameSessionInput}
+                          onChange={(e) => setRenameSessionInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') renameSession(s.id, renameSessionInput)
+                            if (e.key === 'Escape') { setRenamingSessionId(null); setRenameSessionInput('') }
+                          }}
+                          onBlur={() => { setRenamingSessionId(null); setRenameSessionInput('') }}
+                          className="text-sm h-8 py-1 px-2"
+                          autoFocus
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-start gap-2 overflow-hidden min-w-0 flex-1">
+                          <MessageSquare className={`h-4 w-4 flex-shrink-0 mt-0.5 ${currentSessionId === s.id ? 'text-primary' : 'text-muted-foreground'}`} />
+                          <span className={`text-sm whitespace-normal break-words leading-tight ${currentSessionId === s.id ? 'font-semibold text-primary' : 'text-foreground'}`}>
+                            {(s.title || 'Untitled Chat').slice(0, 50)}
+                          </span>
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <button className="opacity-0 group-hover:opacity-100 p-1 hover:text-primary transition-all flex-shrink-0">
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onClick={() => { setRenamingSessionId(s.id); setRenameSessionInput(s.title) }}
+                            >
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer text-destructive focus:text-destructive"
+                              onClick={(e) => deleteSession(s.id, e as any)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Chat Content */}
+        <div className="flex-1 flex flex-col min-w-0 relative">
+          <div
+            ref={scrollRef}
+            className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6"
+            style={{ scrollbarGutter: 'stable' }}
+          >
+            {!currentSessionId ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-8 mt-20">
+                <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4">
+                  <MessageSquarePlus className="w-8 h-8 text-primary" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">No active session</h3>
+                <p className="text-sm text-muted-foreground max-w-xs mb-6">
+                  Start a new conversation to begin discussing this material.
+                </p>
+                <Button onClick={createNewSession} disabled={isCreatingSession}>
+                  <Plus className="mr-2 h-4 w-4" /> New Session
+                </Button>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-8 mt-20">
+                <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4">
+                  <MessageSquare className="w-8 h-8 text-primary" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Start a conversation</h3>
+                <p className="text-sm text-muted-foreground max-w-xs">
+                  Ask questions about the material, request clarifications, or explore related topics.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6 max-w-3xl mx-auto w-full">
+                {messages.map((m, i) => (
                   <motion.div
-                    key={message.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    key={i}
+                    className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div
-                      className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                        message.role === 'user'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted text-foreground'
-                      }`}
-                    >
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+                    <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
+                      m.role === 'user'
+                        ? 'bg-primary text-primary-foreground rounded-tr-none'
+                        : 'bg-card border border-border/50 text-foreground rounded-tl-none'
+                    }`}>
+                      {m.role === 'user' ? (
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                      ) : (
+                        <div className="text-sm leading-relaxed [&_strong]:font-semibold [&_li]:mb-1">
+                          {renderMarkdown(m.content)}
+                        </div>
+                      )}
                     </div>
                   </motion.div>
                 ))}
-              </AnimatePresence>
-
-              {isLoading && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-                  <div className="bg-muted rounded-2xl px-4 py-3">
-                    <div className="flex gap-1">
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-card border border-border/50 rounded-2xl rounded-tl-none px-4 py-3 flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      <span className="text-sm text-muted-foreground">Assistant is thinking...</span>
                     </div>
                   </div>
-                </motion.div>
-              )}
-            </div>
-          )}
-        </ScrollArea>
+                )}
+              </div>
+            )}
+          </div>
 
-        <div className="p-4 border-t">
-          <form onSubmit={(e) => { e.preventDefault(); handleSend() }} className="flex gap-2">
-            <Input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={sourceType === 'topic' ? `Ask about ${topic || 'your topic'}...` : 'Ask a question...'}
-              disabled={isLoading}
-              className="flex-1"
-            />
-            <Button type="submit" disabled={!input.trim() || isLoading}>
-              <Send className="h-4 w-4" />
-              <span className="sr-only">Send message</span>
-            </Button>
-          </form>
+          {/* Input */}
+          <div className="p-3 border-t bg-slate-50 dark:bg-[#0e0e0e]">
+            <form
+              onSubmit={(e) => { e.preventDefault(); sendMessage() }}
+              className="flex gap-2 max-w-3xl mx-auto"
+            >
+              <Input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={currentSessionId ? "Ask anything..." : "Create a session to start chatting"}
+                disabled={!currentSessionId}
+                className="flex-1 rounded-xl bg-muted/30 border-border/50 focus-visible:ring-primary h-10"
+              />
+              <Button type="submit" disabled={isLoading || !input.trim() || !currentSessionId} size="icon" className="h-10 w-10 rounded-xl shadow-md">
+                <Send className="h-4 w-4" />
+              </Button>
+            </form>
+          </div>
         </div>
-      </Card>
-    </motion.div>
+      </div>
+    </div>
   )
 }
 
-function QuizTab({ materialId, sourceType, topic, materialTitle }: { materialId: string; sourceType: string; topic?: string; materialTitle: string }) {
+function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, setIsGenerating }: {
+  materialId: string
+  sourceType: string
+  topic?: string
+  materialTitle: string
+  isGenerating: boolean
+  setIsGenerating: (v: boolean) => void
+}) {
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium')
-  const [questionCount, setQuestionCount] = useState(5)
-  const [isGenerating, setIsGenerating] = useState(false)
+  const [mcqCount, setMcqCount] = useState(3)
+  const [tfCount, setTfCount] = useState(2)
   const [questions, setQuestions] = useState<QuizQuestion[]>([])
+  const [quizId, setQuizId] = useState<string | null>(null)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [result, setResult] = useState<QuizResult | null>(null)
 
+  // ── Parse quiz data from backend format ──────────────
+  const parseQuizData = (rawQuiz: any): QuizQuestion[] => {
+    const mcqQuestions: QuizQuestion[] = (rawQuiz.mcq || []).map((q: any, i: number) => ({
+      id: `q-mcq-${i}`,
+      type: 'mcq' as const,
+      question: q.question || '',
+      options: q.options || [],
+      correct_answer: q.answer || '',
+      explanation: q.explanation || '',
+    }))
+
+    const tfQuestions: QuizQuestion[] = (rawQuiz.tf || []).map((q: any, i: number) => ({
+      id: `q-tf-${i}`,
+      type: 'true_false' as const,
+      question: q.question || '',
+      options: undefined,
+      correct_answer: q.answer || '',
+      explanation: q.explanation || '',
+    }))
+
+    return [...mcqQuestions, ...tfQuestions]
+  }
+
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const isMounted = useRef(true)
+
   useEffect(() => {
-    const loadExistingQuiz = async () => {
+    isMounted.current = true
+    return () => { isMounted.current = false }
+  }, [])
+
+  const startQuizPoller = () => {
+    if (pollingRef.current) return
+    pollingRef.current = setInterval(async () => {
+      try {
+        const quizzes = await quizAPI.list(materialId)
+        if (quizzes.length > 0 && isMounted.current) {
+          // If we find a new quiz, stop polling
+          const latest = quizzes[quizzes.length - 1]
+          setQuizId(latest.id)
+          const rawQuiz = latest.quiz_data || latest.quiz
+          if (rawQuiz) {
+            const formatted = parseQuizData(rawQuiz)
+            if (formatted.length > 0) setQuestions(formatted)
+          }
+          setIsGenerating(false)
+          localStorage.removeItem(`generating_quiz_${materialId}`)
+          clearInterval(pollingRef.current!)
+          pollingRef.current = null
+        }
+      } catch { }
+    }, 5000)
+  }
+
+  // ── Load existing quiz on mount ──────────────────────
+  useEffect(() => {
+    const checkStatus = async () => {
       if (sourceType === 'topic') return
+      
+      const wasGenerating = localStorage.getItem(`generating_quiz_${materialId}`) === 'true'
+      if (wasGenerating) {
+        setIsGenerating(true)
+        startQuizPoller()
+      }
+
       try {
         const quizzes = await quizAPI.list(materialId)
         if (quizzes.length > 0) {
           const latest = quizzes[quizzes.length - 1]
+          setQuizId(latest.id)
           const rawQuiz = latest.quiz_data || latest.quiz
           if (rawQuiz) {
-            const rawQuestions = (rawQuiz.questions || rawQuiz.mcqs || []) as Array<{
-              question: string
-              options?: string[]
-              correct_answer?: string
-              answer?: string
-              type?: string
-            }>
-            if (rawQuestions.length > 0) {
-              const formatted: QuizQuestion[] = rawQuestions.map((q: any, i: number) => ({
-                id: `q-${i}`,
-                type: q.type === 'true_false' ? 'true_false' : 'mcq',
-                question: q.question || '',
-                options: q.options,
-                correct_answer: q.correct_answer || q.answer || '',
-              }))
-              setQuestions(formatted)
+            const formatted = parseQuizData(rawQuiz)
+            if (formatted.length > 0) setQuestions(formatted)
+          }
+          
+          if (wasGenerating) {
+            setIsGenerating(false)
+            localStorage.removeItem(`generating_quiz_${materialId}`)
+            if (pollingRef.current) {
+              clearInterval(pollingRef.current)
+              pollingRef.current = null
             }
           }
+
+          try {
+            const results = await quizAPI.getResults(latest.id)
+            if (results.length > 0) {
+              const lastResult = results[results.length - 1].results
+              if (lastResult) setResult(lastResult as QuizResult)
+            }
+          } catch { }
         }
-      } catch {
-        // no existing quiz
-      }
+      } catch { }
     }
-    loadExistingQuiz()
+    checkStatus()
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current)
+    }
   }, [materialId, sourceType])
 
+  // ── Generate quiz ────────────────────────────────────
   const generateQuiz = async () => {
     setIsGenerating(true)
     setResult(null)
     setAnswers({})
+    localStorage.setItem(`generating_quiz_${materialId}`, 'true')
+    startQuizPoller()
 
     try {
-      const mcqCount = Math.round(questionCount * 0.6)
-      const tfCount = questionCount - mcqCount
       const quizSourceType = sourceType === 'topic' ? 'web' : sourceType
-
       const data = await quizAPI.generate(
         difficulty,
-        mcqCount || 1,
-        tfCount || 1,
+        mcqCount,
+        tfCount,
         quizSourceType,
         sourceType !== 'topic' ? materialId : undefined,
         sourceType === 'topic' ? topic : undefined,
       )
-
-      const rawQuiz = data.quiz
-      const rawQuestions = (rawQuiz.questions || rawQuiz.mcqs || []) as Array<{
-        question: string
-        options?: string[]
-        correct_answer?: string
-        answer?: string
-        type?: string
-      }>
-
-      const formatted: QuizQuestion[] = rawQuestions.map((q: any, i: number) => ({
-        id: `q-${i}`,
-        type: q.type === 'true_false' ? 'true_false' : 'mcq',
-        question: q.question || '',
-        options: q.options,
-        correct_answer: q.correct_answer || q.answer || '',
-      }))
-
-      if (formatted.length > 0) {
-        setQuestions(formatted)
-        toast.success('Quiz generated!')
-      } else {
-        throw new Error('No questions returned')
+      if (isMounted.current) {
+        setQuizId(data.quiz_id)
+        const formatted = parseQuizData(data.quiz)
+        if (formatted.length > 0) {
+          setQuestions(formatted)
+          toast.success('Quiz generated!')
+        } else {
+          throw new Error('No questions returned')
+        }
       }
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-      const mockQuestions: QuizQuestion[] = [
-        {
-          id: '1', type: 'mcq',
-          question: 'What is the best way to understand this topic?',
-          options: ['Study the fundamental concepts first', 'Skip to advanced topics immediately', 'Only focus on practical examples', 'Memorize without understanding'],
-          correct_answer: 'Study the fundamental concepts first',
-        },
-        {
-          id: '2', type: 'mcq',
-          question: 'Which approach helps reinforce learning?',
-          options: ['Regular practice and review', 'Cramming before exams', 'Passive reading only', 'Watching videos without notes'],
-          correct_answer: 'Regular practice and review',
-        },
-        {
-          id: '3', type: 'true_false',
-          question: 'Active recall is an effective learning technique.',
-          correct_answer: 'true',
-        },
-        {
-          id: '4', type: 'mcq',
-          question: 'What is spaced repetition?',
-          options: ['Reviewing material at increasing intervals', 'Studying everything at once', 'Only studying before tests', 'Reading the same page repeatedly'],
-          correct_answer: 'Reviewing material at increasing intervals',
-        },
-        {
-          id: '5', type: 'true_false',
-          question: 'Teaching others can help solidify your own understanding.',
-          correct_answer: 'true',
-        },
-      ].slice(0, questionCount)
-
-      setQuestions(mockQuestions)
-      toast.success('Quiz generated!')
+      toast.error('Failed to generate quiz. Please try again.')
     } finally {
-      setIsGenerating(false)
+      if (isMounted.current) {
+        setIsGenerating(false)
+        localStorage.removeItem(`generating_quiz_${materialId}`)
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current)
+          pollingRef.current = null
+        }
+      }
     }
   }
 
+  // ── Submit ───────────────────────────────────────────
   const submitQuiz = () => {
     const results: QuizResult['answers'] = questions.map((q) => ({
       question_id: q.id,
       user_answer: answers[q.id] || '',
       correct_answer: q.correct_answer,
-      is_correct: answers[q.id]?.toLowerCase() === q.correct_answer.toLowerCase(),
+      is_correct: (answers[q.id] || '').toLowerCase() === q.correct_answer.toLowerCase(),
     }))
-
     const correct = results.filter((r) => r.is_correct).length
-
-    setResult({
+    const resultData: QuizResult = {
       total: questions.length,
       correct,
       incorrect: questions.length - correct,
       score: Math.round((correct / questions.length) * 100),
       answers: results,
-    })
-
-    toast.success(`Quiz completed! Score: ${Math.round((correct / questions.length) * 100)}%`)
+    }
+    setResult(resultData)
+    if (quizId) {
+      quizAPI.saveResult(quizId, resultData as unknown as Record<string, unknown>).catch(() => { })
+    }
+    toast.success(`Quiz completed! Score: ${resultData.score}%`)
   }
 
-  const resetQuiz = () => {
-    setQuestions([])
-    setAnswers({})
-    setResult(null)
-  }
+  const resetQuiz = () => { setQuestions([]); setAnswers({}); setResult(null) }
 
+  // ── Export PDF ───────────────────────────────────────
   const handleExportPDF = () => {
     if (!result) return
-    const questionsHtml = questions
-      .map((q, i) => {
-        const answer = result.answers.find((a) => a.question_id === q.id)
-        const isCorrect = answer?.is_correct
-        return `
-          <div class="question">
-            <h3>${i + 1}. ${q.question}</h3>
-            ${q.options ? q.options.map((o) => `<div class="option">${o === q.correct_answer ? '✓ ' : ''}${o}</div>`).join('') : ''}
-            <div class="${isCorrect ? 'correct' : 'incorrect'}">
-              ${isCorrect ? '✓ Correct' : `✗ Incorrect — Correct answer: ${q.correct_answer}`}
-            </div>
+    const questionsHtml = questions.map((q, i) => {
+      const answer = result.answers.find((a) => a.question_id === q.id)
+      return `
+        <div class="question-card ${answer?.is_correct ? 'correct' : 'incorrect'}">
+          <div class="question-header">
+            <span class="q-badge">${q.type === 'mcq' ? 'MCQ' : 'T/F'}</span>
+            <p class="q-text">${i + 1}. ${q.question}</p>
           </div>
-        `
-      })
-      .join('')
-
+          ${q.options ? q.options.map((o) => `<div class="option">${o === q.correct_answer ? '✓ ' : ''}${o}</div>`).join('') : ''}
+          <div class="result-text ${answer?.is_correct ? 'correct' : 'incorrect'}">
+            ${answer?.is_correct ? '✓ Correct' : `✗ Incorrect — Correct Answer: ${q.correct_answer}`}
+          </div>
+        </div>`
+    }).join('')
     const html = `
       <div class="stats">
         <div class="stat"><div class="stat-value">${result.score}%</div><div class="stat-label">Score</div></div>
-        <div class="stat"><div class="stat-value" style="color:#16a34a">${result.correct}</div><div class="stat-label">Correct</div></div>
-        <div class="stat"><div class="stat-value" style="color:#dc2626">${result.incorrect}</div><div class="stat-label">Incorrect</div></div>
-      </div>
-      ${questionsHtml}
-    `
+        <div class="stat success"><div class="stat-value">${result.correct}</div><div class="stat-label">Correct</div></div>
+        <div class="stat error"><div class="stat-value">${result.incorrect}</div><div class="stat-label">Incorrect</div></div>
+      </div>${questionsHtml}`
     printAsPDF(`Quiz Results - ${materialTitle}`, html)
   }
 
-  if (questions.length > 0) {
+  // ── Results view ─────────────────────────────────────
+  if (result && questions.length > 0) {
     return (
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-        {result ? (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  {result.score >= 70 ? <CheckCircle2 className="h-6 w-6 text-green-500" /> : <XCircle className="h-6 w-6 text-red-500" />}
-                  Quiz Results
-                </CardTitle>
-                <CardDescription>You scored {result.correct} out of {result.total} questions</CardDescription>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                {result.score >= 70
+                  ? <CheckCircle2 className="h-6 w-6 text-green-500" />
+                  : <XCircle className="h-6 w-6 text-red-500" />}
+                Quiz Results
+              </CardTitle>
+              <CardDescription>
+                {result.correct} of {result.total} correct
+              </CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleExportPDF}>
+              <Printer className="mr-2 h-4 w-4" />Export PDF
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="text-center p-4 bg-muted rounded-xl">
+                <p className="text-3xl font-bold">{result.score}%</p>
+                <p className="text-sm text-muted-foreground">Score</p>
               </div>
-              <Button variant="outline" size="sm" onClick={handleExportPDF}>
-                <Printer className="mr-2 h-4 w-4" />
-                Export PDF
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                <div className="text-center p-4 bg-muted rounded-xl">
-                  <p className="text-3xl font-bold text-foreground">{result.score}%</p>
-                  <p className="text-sm text-muted-foreground">Score</p>
-                </div>
-                <div className="text-center p-4 bg-green-500/10 rounded-xl">
-                  <p className="text-3xl font-bold text-green-600">{result.correct}</p>
-                  <p className="text-sm text-muted-foreground">Correct</p>
-                </div>
-                <div className="text-center p-4 bg-red-500/10 rounded-xl">
-                  <p className="text-3xl font-bold text-red-600">{result.incorrect}</p>
-                  <p className="text-sm text-muted-foreground">Incorrect</p>
-                </div>
+              <div className="text-center p-4 bg-green-500/10 rounded-xl">
+                <p className="text-3xl font-bold text-green-600">{result.correct}</p>
+                <p className="text-sm text-muted-foreground">Correct</p>
               </div>
+              <div className="text-center p-4 bg-red-500/10 rounded-xl">
+                <p className="text-3xl font-bold text-red-600">{result.incorrect}</p>
+                <p className="text-sm text-muted-foreground">Incorrect</p>
+              </div>
+            </div>
 
-              <div className="space-y-4">
-                {questions.map((question, index) => {
-                  const answer = result.answers.find((a) => a.question_id === question.id)
-                  return (
-                    <div key={question.id} className={`p-4 rounded-xl border ${answer?.is_correct ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
-                      <div className="flex items-start gap-2">
-                        {answer?.is_correct ? <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" /> : <XCircle className="h-5 w-5 text-red-500 mt-0.5" />}
-                        <div>
-                          <p className="font-medium text-foreground">{index + 1}. {question.question}</p>
-                          <p className="text-sm text-muted-foreground mt-1">Your answer: {answer?.user_answer || 'Not answered'}</p>
-                          {!answer?.is_correct && <p className="text-sm text-green-600 mt-1">Correct answer: {question.correct_answer}</p>}
+            {/* Per-question breakdown */}
+            <div className="space-y-3">
+              {questions.map((question, index) => {
+                const answer = result.answers.find((a) => a.question_id === question.id)
+                return (
+                  <div
+                    key={question.id}
+                    className={`p-4 rounded-xl border ${answer?.is_correct
+                      ? 'border-green-500/30 bg-green-500/5'
+                      : 'border-red-500/30 bg-red-500/5'
+                      }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      {answer?.is_correct
+                        ? <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+                        : <XCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge variant="outline" className="text-xs">
+                            {question.type === 'mcq' ? 'MCQ' : 'True/False'}
+                          </Badge>
+                          <p className="font-medium text-foreground">
+                            {index + 1}. {question.question}
+                          </p>
                         </div>
+                        <p className="text-sm text-muted-foreground">
+                          Your answer: <span className="font-medium">{answer?.user_answer || 'Not answered'}</span>
+                        </p>
+                        {!answer?.is_correct && (
+                          <p className="text-sm text-green-600 mt-0.5">
+                            Correct: <span className="font-medium">{question.correct_answer}</span>
+                          </p>
+                        )}
                       </div>
                     </div>
-                  )
-                })}
-              </div>
-
-              <Button onClick={resetQuiz} className="w-full mt-6">Try Another Quiz</Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <>
-            <Card>
-              <CardHeader>
-                <CardTitle>Quiz</CardTitle>
-                <CardDescription>{questions.length} questions | {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} difficulty</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {questions.map((question, index) => (
-                  <div key={question.id} className="space-y-3">
-                    <p className="font-medium text-foreground">{index + 1}. {question.question}</p>
-                    {question.type === 'mcq' ? (
-                      <RadioGroup value={answers[question.id] || ''} onValueChange={(value) => setAnswers((prev) => ({ ...prev, [question.id]: value }))} className="space-y-2">
-                        {question.options?.map((option, optIndex) => (
-                          <div key={optIndex} className="flex items-center space-x-2">
-                            <RadioGroupItem value={option} id={`${question.id}-${optIndex}`} />
-                            <Label htmlFor={`${question.id}-${optIndex}`} className="cursor-pointer flex-1">{option}</Label>
-                          </div>
-                        ))}
-                      </RadioGroup>
-                    ) : (
-                      <RadioGroup value={answers[question.id] || ''} onValueChange={(value) => setAnswers((prev) => ({ ...prev, [question.id]: value }))} className="flex gap-4">
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="true" id={`${question.id}-true`} />
-                          <Label htmlFor={`${question.id}-true`} className="cursor-pointer">True</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="false" id={`${question.id}-false`} />
-                          <Label htmlFor={`${question.id}-false`} className="cursor-pointer">False</Label>
-                        </div>
-                      </RadioGroup>
-                    )}
                   </div>
-                ))}
-              </CardContent>
-            </Card>
-            <Button onClick={submitQuiz} disabled={Object.keys(answers).length !== questions.length} className="w-full" size="lg">Submit Answers</Button>
-          </>
-        )}
+                )
+              })}
+            </div>
+            <Button onClick={resetQuiz} className="w-full mt-6">Try Another Quiz</Button>
+          </CardContent>
+        </Card>
       </motion.div>
     )
   }
 
+  // ── Active quiz view ─────────────────────────────────
+  if (questions.length > 0) {
+    const mcqQuestions = questions.filter((q) => q.type === 'mcq')
+    const tfQuestions = questions.filter((q) => q.type === 'true_false')
+    return (
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Quiz</CardTitle>
+            <CardDescription className="flex items-center gap-2">
+              <Badge variant="outline">{mcqQuestions.length} MCQ</Badge>
+              <Badge variant="outline">{tfQuestions.length} True/False</Badge>
+              <Badge variant="outline">{difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}</Badge>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {questions.map((question, index) => (
+              <div key={question.id} className="space-y-3 pb-4 border-b last:border-0">
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="text-xs flex-shrink-0">
+                    {question.type === 'mcq' ? 'MCQ' : 'T/F'}
+                  </Badge>
+                  <p className="font-medium text-foreground">
+                    {index + 1}. {question.question}
+                  </p>
+                </div>
+                {question.type === 'mcq' ? (
+                  <RadioGroup
+                    value={answers[question.id] || ''}
+                    onValueChange={(value) => setAnswers((prev) => ({ ...prev, [question.id]: value }))}
+                    className="space-y-2 ml-2"
+                  >
+                    {question.options?.map((option, optIndex) => (
+                      <div key={optIndex} className="flex items-center space-x-2">
+                        <RadioGroupItem value={option} id={`${question.id}-${optIndex}`} />
+                        <Label htmlFor={`${question.id}-${optIndex}`} className="cursor-pointer flex-1">
+                          {option}
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                ) : (
+                  <RadioGroup
+                    value={answers[question.id] || ''}
+                    onValueChange={(value) => setAnswers((prev) => ({ ...prev, [question.id]: value }))}
+                    className="flex gap-6 ml-2"
+                  >
+                    {['True', 'False'].map((opt) => (
+                      <div key={opt} className="flex items-center space-x-2">
+                        <RadioGroupItem value={opt} id={`${question.id}-${opt}`} />
+                        <Label htmlFor={`${question.id}-${opt}`} className="cursor-pointer">{opt}</Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+        <Button
+          onClick={submitQuiz}
+          disabled={Object.keys(answers).length !== questions.length}
+          className="w-full"
+          size="lg"
+        >
+          Submit Answers ({Object.keys(answers).length}/{questions.length} answered)
+        </Button>
+      </motion.div>
+    )
+  }
+
+  // ── Config view ──────────────────────────────────────
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
       <Card>
         <CardHeader>
           <CardTitle>Generate Quiz</CardTitle>
-          <CardDescription>Configure your quiz settings and test your knowledge</CardDescription>
+          <CardDescription>Configure your quiz and test your knowledge</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+
+          {/* Difficulty */}
           <div className="space-y-3">
-            <Label>Difficulty Level</Label>
+            <Label className="text-base font-semibold">Difficulty</Label>
             <div className="flex gap-2">
               {(['easy', 'medium', 'hard'] as const).map((level) => (
-                <Button key={level} variant={difficulty === level ? 'default' : 'outline'} onClick={() => setDifficulty(level)} className="flex-1">
+                <Button
+                  key={level}
+                  variant={difficulty === level ? 'default' : 'outline'}
+                  onClick={() => setDifficulty(level)}
+                  className="flex-1"
+                >
                   {level.charAt(0).toUpperCase() + level.slice(1)}
                 </Button>
               ))}
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <Label>Number of Questions</Label>
-              <span className="text-sm text-muted-foreground">{questionCount}</span>
+          {/* Question Count Selectors */}
+          <div className="space-y-6">
+            <div className="flex flex-col gap-4">
+              {/* MCQ Counter */}
+              <div className="flex items-center justify-between p-4 rounded-2xl border border-border/50 bg-muted/30">
+                <div className="flex flex-col">
+                  <span className="text-base font-semibold">Multiple Choice</span>
+                  <span className="text-sm text-muted-foreground">Range: 1-15</span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setMcqCount(Math.max(1, mcqCount - 1))}
+                    disabled={mcqCount <= 1}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <span className="text-2xl font-bold w-12 text-center">{mcqCount}</span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setMcqCount(Math.min(15, mcqCount + 1))}
+                    disabled={mcqCount >= 15}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* T/F Counter */}
+              <div className="flex items-center justify-between p-4 rounded-2xl border border-border/50 bg-muted/30">
+                <div className="flex flex-col">
+                  <span className="text-base font-semibold">True / False</span>
+                  <span className="text-sm text-muted-foreground">Range: 1-10</span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setTfCount(Math.max(1, tfCount - 1))}
+                    disabled={tfCount <= 1}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <span className="text-2xl font-bold w-12 text-center">{tfCount}</span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setTfCount(Math.min(10, tfCount + 1))}
+                    disabled={tfCount >= 10}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
-            <Slider value={[questionCount]} onValueChange={([value]) => setQuestionCount(value)} min={3} max={20} step={1} />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>3</span>
-              <span>20</span>
+
+            {/* Total Row */}
+            <div className="pt-4 border-t border-border/50">
+              <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-primary/10 border border-primary/20">
+                <span className="text-base font-semibold">Total Questions</span>
+                <span className="text-xl font-bold text-primary">{mcqCount + tfCount}</span>
+              </div>
             </div>
           </div>
+
+          {isGenerating && (
+            <div className="flex flex-col items-center gap-3 py-4 rounded-xl bg-primary/5 border border-primary/20">
+              <Loader2 className="h-6 w-6 text-primary animate-spin" />
+              <p className="text-sm text-muted-foreground text-center">
+                Generating your quiz… You can switch tabs — we'll keep working in the background.
+              </p>
+            </div>
+          )}
 
           <Button onClick={generateQuiz} disabled={isGenerating} className="w-full" size="lg">
             {isGenerating ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating Quiz...</>
             ) : (
-              <><Brain className="mr-2 h-4 w-4" />Generate Quiz</>
+              <><Brain className="mr-2 h-4 w-4" />Generate Quiz ({mcqCount + tfCount} questions)</>
             )}
           </Button>
         </CardContent>

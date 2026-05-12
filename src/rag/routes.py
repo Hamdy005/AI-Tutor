@@ -1,11 +1,21 @@
 import time
+import asyncio
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Any
 
-from src.rag.rag import rag_answer
-from src.dependencies import get_current_user
-from src.store import get_material, get_chunks, get_summary, get_or_create_memory
+from src.rag.rag import rag_answer, extract_chat_title
+from src.dependencies import get_current_user, get_current_user_id
+from src.store import (
+    get_material, get_chunks, get_summary, get_or_create_memory,
+    # Session-based chat
+    create_chat_session, list_chat_sessions, get_chat_session,
+    rename_chat_session, delete_chat_session,
+    append_session_message, get_session_messages,
+    # Legacy
+    save_chat_messages, get_chat_messages,
+)
+from src.summary_generator.summary import clean_summary
 
 router = APIRouter(prefix="/api/tutor", tags=["Tutor"])
 
@@ -14,7 +24,8 @@ class TutorQuery(BaseModel):
     query: str
     source_type: str = "web"
     material_id: Optional[str] = None
-    memory_id: Optional[str] = None
+    session_id: Optional[str] = None   # preferred
+    memory_id: Optional[str] = None    # legacy fallback
 
 
 class TutorResponse(BaseModel):
@@ -32,47 +43,180 @@ async def ask_tutor(
     if not body.query.strip():
         raise HTTPException(400, "Query cannot be empty")
 
-    memory, memory_id = get_or_create_memory(body.memory_id)
-    start = time.time()
+    # Determine memory key (prefer session_id for persistence)
+    mem_key = body.session_id or body.memory_id
 
+    # If session_id is provided, seed memory from DB history so context survives restarts
+    seed_msgs: list[dict] | None = None
+    if body.session_id:
+        try:
+            seed_msgs = get_session_messages(body.session_id)
+        except Exception:
+            seed_msgs = None
+
+    memory, memory_id = get_or_create_memory(mem_key, seed_messages=seed_msgs)
+    # Persist user message immediately so it's not lost if generation takes time
+    if body.session_id:
+        try:
+            append_session_message(body.session_id, "user", body.query.strip())
+        except Exception:
+            pass
+
+    start = time.time()
     try:
+        loop = asyncio.get_event_loop()
         if body.source_type in ("pdf", "url"):
             mat = get_material(body.material_id) if body.material_id else None
             if not mat:
                 raise HTTPException(400, f"No {body.source_type} material found. Upload one first.")
 
             material_id = body.material_id
-            chunks_list = get_chunks(material_id)
-            chunks_texts = [c["content"] for c in chunks_list] if chunks_list else []
-            summary_record = get_summary(material_id)
-            summary_text = summary_record["summary"] if summary_record else ""
-            status = mat.get("status")
+            
+            # Fetch summary to be used as fallback in rag_answer
+            mat_summary = get_summary(material_id)
+            summary_text = mat_summary.get("summary", "") if mat_summary else ""
 
-            if status == "ready":
-                answer, memory = rag_answer(
-                    query=body.query, material_id=material_id, memory=memory
+            # Use rag_answer for both "ready" and other statuses (if chunks exist)
+            answer, memory = await loop.run_in_executor(
+                None, 
+                lambda: rag_answer(
+                    query=body.query, 
+                    material_id=material_id, 
+                    memory=memory,
+                    summaries=summary_text
                 )
-                source = f"{body.source_type.upper()} (embeddings)"
-            elif summary_text:
-                answer, memory = rag_answer(
-                    query=body.query, summaries=summary_text, memory=memory
-                )
-                source = f"{body.source_type.upper()} (summary)"
-            elif chunks_texts:
-                answer, memory = rag_answer(
-                    query=body.query, chunks=chunks_texts, memory=memory
-                )
-                source = f"{body.source_type.upper()} (chunks)"
-            else:
-                answer, memory = rag_answer(query=body.query, memory=memory)
-                source = "Web Search (no material data)"
+            )
+            source = f"{body.source_type.upper()} (embeddings vector)"
 
         else:
-            answer, memory = rag_answer(query=body.query, memory=memory)
+            answer, memory = await loop.run_in_executor(
+                None,
+                lambda: rag_answer(query=body.query, memory=memory)
+            )
             source = "Web Search"
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(500, f"Error generating answer: {e}")
 
+    cleaned_answer = clean_summary(answer)
     elapsed = time.time() - start
-    return TutorResponse(answer=answer, source=source, time_taken=elapsed, memory_id=memory_id)
+
+    # Persist assistant response
+    if body.session_id:
+        try:
+            append_session_message(body.session_id, "assistant", cleaned_answer)
+        except Exception:
+            pass  # don't fail the response if saving fails
+
+    return TutorResponse(answer=cleaned_answer, source=source, time_taken=elapsed, memory_id=memory_id)
+
+
+# ── Chat Session Routes ──────────────────────────────────
+
+class SessionRequest(BaseModel):
+    material_id: str
+    title: Optional[str] = "Chat Session"
+
+class RenameSessionRequest(BaseModel):
+    title: str
+
+@router.get("/sessions")
+async def list_sessions(
+    material_id: str,
+    user_id: str = Depends(get_current_user_id)
+):
+    import uuid
+    try:
+        uuid.UUID(material_id)
+    except ValueError:
+        return []
+    return list_chat_sessions(material_id, user_id)
+
+
+@router.post("/sessions")
+async def create_session(
+    body: SessionRequest,
+    user_id: str = Depends(get_current_user_id)
+):
+    import uuid
+    try:
+        uuid.UUID(body.material_id)
+    except ValueError:
+        raise HTTPException(400, "Legacy topic format detected. Please delete this topic from your dashboard and recreate it to enable persistent chat.")
+    session = create_chat_session(user_id, body.material_id, body.title or "Chat Session")
+    return session
+
+
+@router.get("/sessions/{session_id}/messages")
+async def get_messages(
+    session_id: str,
+    current_user=Depends(get_current_user),
+):
+    messages = get_session_messages(session_id)
+    return messages
+
+
+@router.patch("/sessions/{session_id}")
+async def rename_session(
+    session_id: str,
+    body: RenameSessionRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    rename_chat_session(session_id, body.title)
+    return {"status": "ok"}
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    delete_chat_session(session_id)
+    return {"status": "ok"}
+
+
+class ExtractTitleRequest(BaseModel):
+    query: str
+
+
+@router.post("/sessions/{session_id}/extract-title")
+async def extract_title(
+    session_id: str,
+    body: ExtractTitleRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    try:
+        loop = asyncio.get_event_loop()
+        title = await loop.run_in_executor(None, lambda: extract_chat_title(body.query))
+        rename_chat_session(session_id, title)
+        return {"status": "ok", "title": title}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to extract title: {e}")
+
+
+# ── Legacy save/load chat (kept for backward compat) ────
+
+class SaveChatRequest(BaseModel):
+    material_id: str
+    messages: list[dict[str, Any]]
+
+
+@router.post("/chat/save")
+async def save_chat(
+    body: SaveChatRequest,
+    user_id: str = Depends(get_current_user_id),
+    current_user=Depends(get_current_user),
+):
+    save_chat_messages(body.material_id, user_id, body.messages)
+    return {"status": "ok"}
+
+
+@router.get("/chat/{material_id}")
+async def load_chat(
+    material_id: str,
+    current_user=Depends(get_current_user),
+):
+    messages = get_chat_messages(material_id)
+    return {"messages": messages}

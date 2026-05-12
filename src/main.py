@@ -1,3 +1,6 @@
+import logging
+import logging.handlers
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,11 +13,41 @@ from src.quiz_generator.routes import router as quiz_router
 from src.auth.routes import router as auth_router
 from src.config import settings
 
+# ── Logging Setup ──────────────────────────────────────
+os.makedirs("logs", exist_ok=True)
+
+log_formatter = logging.Formatter(
+    "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+# File handler — rotates at 5MB, keeps 3 backups
+file_handler = logging.handlers.RotatingFileHandler(
+    "logs/app.log", maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+)
+file_handler.setFormatter(log_formatter)
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
+
+# Apply to root logger so all src.* modules inherit it
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+root_logger.addHandler(file_handler)
+root_logger.addHandler(console_handler)
+
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from src.rag.rag import get_embedder
-    get_embedder()
+    try:
+        from src.rag.rag import get_embedder
+        get_embedder()
+        logger.info("Embedder loaded successfully.")
+    except Exception as e:
+        logger.warning(f"Embedder failed to load: {e}")
     yield
 
 
@@ -29,8 +62,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins or ["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(materials_router)

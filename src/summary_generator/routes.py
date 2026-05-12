@@ -1,4 +1,6 @@
+import asyncio
 import time
+import logging 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
@@ -9,7 +11,7 @@ from src.dependencies import get_current_user_id, get_current_user
 from src.config import settings
 
 router = APIRouter(prefix="/api/materials", tags=["Summarizer"])
-
+logger = logging.getLogger(__name__)
 
 class SummarizeRequest(BaseModel):
     material_id: str
@@ -37,7 +39,8 @@ async def generate_summary(
     try:
         combined = "\n".join(c["content"] for c in chunks_list)
         start = time.time()
-        summary = summarizer(combined)
+        loop = asyncio.get_event_loop()
+        summary = await loop.run_in_executor(None, summarizer, combined)
         elapsed = time.time() - start
 
         save_summary(
@@ -61,5 +64,6 @@ async def get_material_summary(
 ):
     summary = get_stored_summary(material_id)
     if not summary:
-        raise HTTPException(404, "No summary found for this material")
+        logger.info("no summary found")
+        return {"summary": None, "time_taken": 0}
     return {"summary": summary["summary"], "time_taken": summary.get("time_taken", 0)}

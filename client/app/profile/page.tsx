@@ -216,13 +216,13 @@ export default function ProfilePage() {
               <div className="space-y-3">
                 <Label>Theme</Label>
                 <div className="grid grid-cols-3 gap-3">
-                  <Button variant={theme === 'light' ? 'default' : 'outline'} className="flex flex-col items-center gap-2 h-auto py-4" onClick={() => handleThemeChange('light')}>
+                  <Button variant={theme === 'light' ? 'default' : 'outline'} className="flex flex-col items-center gap-2 h-auto py-4 hover:bg-primary/5 transition-colors" onClick={() => handleThemeChange('light')}>
                     <Sun className="h-5 w-5" /><span className="text-sm">Light</span>
                   </Button>
-                  <Button variant={theme === 'dark' ? 'default' : 'outline'} className="flex flex-col items-center gap-2 h-auto py-4" onClick={() => handleThemeChange('dark')}>
+                  <Button variant={theme === 'dark' ? 'default' : 'outline'} className="flex flex-col items-center gap-2 h-auto py-4 hover:bg-primary/5 transition-colors" onClick={() => handleThemeChange('dark')}>
                     <Moon className="h-5 w-5" /><span className="text-sm">Dark</span>
                   </Button>
-                  <Button variant={theme === 'system' ? 'default' : 'outline'} className="flex flex-col items-center gap-2 h-auto py-4" onClick={() => handleThemeChange('system')}>
+                  <Button variant={theme === 'system' ? 'default' : 'outline'} className="flex flex-col items-center gap-2 h-auto py-4 hover:bg-primary/5 transition-colors" onClick={() => handleThemeChange('system')}>
                     <Monitor className="h-5 w-5" /><span className="text-sm">System</span>
                   </Button>
                 </div>

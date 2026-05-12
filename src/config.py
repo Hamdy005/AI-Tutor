@@ -14,9 +14,20 @@ class Settings:
     openrouter_base_url: str = os.getenv(
         "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
     )
-    supabase_url: str = os.getenv("SUPABASE_URL", "")
-    supabase_key: str = os.getenv("SUPABASE_KEY", "")
-    supabase_anon_key: str = os.getenv("SUPABASE_ANON_KEY", "")
+    # Accept both plain and NEXT_PUBLIC_ prefixed names (config.env uses NEXT_PUBLIC_)
+    supabase_url: str = (
+        os.getenv("SUPABASE_URL")
+        or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")
+    )
+    supabase_key: str = (
+        os.getenv("SUPABASE_KEY")
+        or os.getenv("NEXT_PUBLIC_SUPABASE_KEY", "")
+    )
+    supabase_anon_key: str = (
+        os.getenv("SUPABASE_ANON_KEY")
+        or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
+    )
+    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     model_name: str = os.getenv("MODEL_NAME", "openai/gpt-oss-120b")
     transformers_no_tf: str = os.getenv("TRANSFORMERS_NO_TF", "1")
     cors_allowed_origins: list[str] = [

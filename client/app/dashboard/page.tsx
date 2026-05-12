@@ -10,7 +10,7 @@ import {
   FileText,
   Link as LinkIcon,
   Upload,
-  X,
+  MoreHorizontal,
   Loader2,
   Clock,
   AlertCircle,
@@ -18,6 +18,7 @@ import {
   FolderOpen,
   SquarePen,
   Pencil,
+  Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,6 +33,16 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -44,6 +55,7 @@ import { UserDropdown } from '@/components/user-dropdown'
 import { useAuth } from '@/contexts/auth-context'
 import { materialsAPI } from '@/lib/api'
 import type { Material } from '@/lib/api'
+import { cn } from '@/lib/utils'
 
 const sourceTypeConfig: Record<string, { icon: React.ElementType; label: string; color: string }> = {
   pdf: { icon: FileText, label: 'PDF', color: 'bg-blue-500/10 text-blue-600' },
@@ -51,52 +63,144 @@ const sourceTypeConfig: Record<string, { icon: React.ElementType; label: string;
   topic: { icon: SquarePen, label: 'Topic', color: 'bg-purple-500/10 text-purple-600' },
 }
 
-const statusConfig = {
+const statusConfig: Record<string, { icon: React.ElementType; label: string; color: string; animate: boolean }> = {
+  pending: { icon: Loader2, label: 'Pending', color: 'bg-gray-500/10 text-gray-600', animate: true },
   processing: { icon: Loader2, label: 'Processing', color: 'bg-yellow-500/10 text-yellow-600', animate: true },
   ready: { icon: CheckCircle2, label: 'Ready', color: 'bg-green-500/10 text-green-600', animate: false },
   error: { icon: AlertCircle, label: 'Error', color: 'bg-red-500/10 text-red-600', animate: false },
+  failed: { icon: AlertCircle, label: 'Failed', color: 'bg-red-500/10 text-red-600', animate: false },
 }
 
 export default function DashboardPage() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, token } = useAuth()
   const [materials, setMaterials] = useState<Material[]>([])
   const [isUploadOpen, setIsUploadOpen] = useState(false)
-  const [isUploading, setIsUploading] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [topicInput, setTopicInput] = useState('')
   const [isLoadingMaterials, setIsLoadingMaterials] = useState(true)
+  const [materialsError, setMaterialsError] = useState(false)
   const [renameTarget, setRenameTarget] = useState<Material | null>(null)
   const [renameInput, setRenameInput] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
   const [activeTab, setActiveTab] = useState('pdf')
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
+  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Track local title overrides so polling never wipes user renames
+  const localTitlesRef = useRef<Record<string, string>>({})
+  // Track temp → real ID mappings so we can clean up temp entries on poll
+  const tempToRealRef = useRef<Record<string, string>>({})
+
+  // ── Merge server data with local state ──────────────────────
+  // Preserves: temp entries not yet resolved, local title overrides
+  const mergeWithServer = (serverData: Material[]) => {
+    const serverMap = new Map(serverData.map(m => [m.id, m]))
+
+    // Apply local title overrides to server data
+    for (const [id, title] of Object.entries(localTitlesRef.current)) {
+      const mat = serverMap.get(id)
+      if (mat) {
+        serverMap.set(id, { ...mat, title })
+      }
+    }
+
+    setMaterials(prev => {
+      // Keep temp entries that haven't been resolved yet
+      const tempEntries = prev.filter(m =>
+        m.id.startsWith('temp-') && !tempToRealRef.current[m.id]
+      )
+      // Apply local title overrides to temp entries too
+      const updatedTemps = tempEntries.map(m =>
+        localTitlesRef.current[m.id] ? { ...m, title: localTitlesRef.current[m.id] } : m
+      )
+
+      // Clean up resolved temp→real mappings from overrides
+      for (const [tempId, realId] of Object.entries(tempToRealRef.current)) {
+        // Transfer title override from temp to real if it exists
+        if (localTitlesRef.current[tempId]) {
+          localTitlesRef.current[realId] = localTitlesRef.current[tempId]
+          const mat = serverMap.get(realId)
+          if (mat) serverMap.set(realId, { ...mat, title: localTitlesRef.current[realId] })
+          delete localTitlesRef.current[tempId]
+        }
+        delete tempToRealRef.current[tempId]
+      }
+
+      const merged = [...updatedTemps, ...Array.from(serverMap.values())]
+      localStorage.setItem('cached_materials', JSON.stringify(merged))
+      return merged
+    })
+  }
+
+  // ── Polling ─────────────────────────────────────────────────
+  const startPolling = () => {
+    if (pollingRef.current) return
+    pollingRef.current = setInterval(async () => {
+      const data = await materialsAPI.list().catch(() => null)
+      if (!data) return
+      const sorted = data.sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+      mergeWithServer(sorted)
+      const stillProcessing = sorted.some(
+        (m) => m.status === 'processing' || m.status === 'pending'
+      )
+      if (!stillProcessing) {
+        // Check if there are still temp entries waiting
+        const hasTemps = Object.keys(tempToRealRef.current).length > 0
+        if (!hasTemps) {
+          clearInterval(pollingRef.current!)
+          pollingRef.current = null
+        }
+      }
+    }, 3000)
+  }
 
   useEffect(() => {
+    const cached = localStorage.getItem('cached_materials')
+    if (cached) {
+      try {
+        const parsed: Material[] = JSON.parse(cached)
+        if (parsed.length > 0) {
+          setMaterials(parsed)
+          setIsLoadingMaterials(false)
+        }
+      } catch {}
+    }
     loadMaterials()
-  }, [])
+  }, [token])
 
   const loadMaterials = async () => {
     setIsLoadingMaterials(true)
+    setMaterialsError(false)
     try {
       const data = await materialsAPI.list()
-      setMaterials(data)
-    } catch {
-      const stored = localStorage.getItem('materials')
-      if (stored) {
-        setMaterials(JSON.parse(stored))
+      const sorted = data.sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+      mergeWithServer(sorted)
+      return sorted
+    } catch (err: unknown) {
+      console.error('Failed to load materials:', err)
+      const cached = localStorage.getItem('cached_materials')
+      if (!cached) {
+        setMaterialsError(true)
+        setMaterials([])
       }
+      return []
     } finally {
       setIsLoadingMaterials(false)
     }
   }
 
-  const saveMaterials = (updated: Material[]) => {
-    setMaterials(updated)
-    localStorage.setItem('materials', JSON.stringify(updated))
-  }
-
-  const handleFileUpload = async (file: File) => {
+  // ── Upload Handlers ─────────────────────────────────────────
+  const handleFileUpload = (file: File) => {
     if (!file.type.includes('pdf')) {
       toast.error('Please upload a PDF file')
       return
@@ -112,45 +216,45 @@ export default function DashboardPage() {
       updated_at: new Date().toISOString(),
     }
 
-    setIsUploading(true)
-    saveMaterials([tempMaterial, ...materials])
+    // Close dialog, add temp entry, open rename — all instant
+    setIsUploadOpen(false)
+    setMaterials(prev => [tempMaterial, ...prev])
+    setRenameTarget(tempMaterial)
+    setRenameInput(tempMaterial.title)
 
-    try {
-      const result = await materialsAPI.uploadPDF(file)
-      saveMaterials(
-        materials.map((m) =>
-          m.id === tempId
-            ? { ...m, id: result.material_id, title: result.title.replace('.pdf', ''), status: 'ready' as const }
-            : m
-        ) || []
-      )
-      if (!materials.length) {
-        setMaterials([{
+    // Upload in background — completely non-blocking
+    materialsAPI.uploadPDF(file)
+      .then((result) => {
+        const newMat: Material = {
           id: result.material_id,
-          title: result.title.replace('.pdf', ''),
+          title: localTitlesRef.current[tempId] || result.title || file.name.replace('.pdf', ''),
           source_type: 'pdf',
-          status: 'ready',
+          status: 'processing',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        }])
-      }
-      toast.success('PDF uploaded successfully!')
-      setIsUploadOpen(false)
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-      saveMaterials(
-        materials.map((m) =>
-          m.id === tempId ? { ...m, id: Date.now().toString(), status: 'ready' as const } : m
-        )
-      )
-      toast.success('PDF uploaded successfully!')
-      setIsUploadOpen(false)
-    } finally {
-      setIsUploading(false)
-    }
+        }
+        tempToRealRef.current[tempId] = result.material_id
+        // Transfer any local title override from temp to real
+        if (localTitlesRef.current[tempId]) {
+          localTitlesRef.current[result.material_id] = localTitlesRef.current[tempId]
+          // Also rename on server since user renamed before upload finished
+          materialsAPI.rename(result.material_id, localTitlesRef.current[tempId]).catch(() => {})
+        }
+        setMaterials(prev => prev.map(m => m.id === tempId ? newMat : m))
+        setRenameTarget(prev => (prev?.id === tempId ? newMat : prev))
+        toast.success('PDF uploaded! Processing in background...')
+        startPolling()
+      })
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : 'Upload failed'
+        toast.error(msg)
+        setMaterials(prev => prev.filter(m => m.id !== tempId))
+        setRenameTarget(prev => (prev?.id === tempId ? null : prev))
+        delete localTitlesRef.current[tempId]
+      })
   }
 
-  const handleURLSubmit = async () => {
+  const handleURLSubmit = () => {
     if (!urlInput.trim()) {
       toast.error('Please enter a URL')
       return
@@ -169,34 +273,40 @@ export default function DashboardPage() {
       updated_at: new Date().toISOString(),
     }
 
-    setIsUploading(true)
-    saveMaterials([tempMaterial, ...materials])
+    const url = urlInput.trim()
+    setIsUploadOpen(false)
+    setUrlInput('')
+    setMaterials(prev => [tempMaterial, ...prev])
+    setRenameTarget(tempMaterial)
+    setRenameInput(tempMaterial.title)
 
-    try {
-      const result = await materialsAPI.scrapeURL(urlInput.trim())
-      saveMaterials(
-        materials.map((m) =>
-          m.id === tempId
-            ? { ...m, id: result.material_id, title: result.title, status: 'ready' as const }
-            : m
-        )
-      )
-      toast.success('URL added successfully!')
-      setUrlInput('')
-      setIsUploadOpen(false)
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      saveMaterials(
-        materials.map((m) =>
-          m.id === tempId ? { ...m, id: Date.now().toString(), status: 'ready' as const } : m
-        )
-      )
-      toast.success('URL added successfully!')
-      setUrlInput('')
-      setIsUploadOpen(false)
-    } finally {
-      setIsUploading(false)
-    }
+    materialsAPI.scrapeURL(url)
+      .then((result) => {
+        const newMat: Material = {
+          id: result.material_id,
+          title: localTitlesRef.current[tempId] || result.title || 'New Article',
+          source_type: 'url',
+          status: 'processing',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        tempToRealRef.current[tempId] = result.material_id
+        if (localTitlesRef.current[tempId]) {
+          localTitlesRef.current[result.material_id] = localTitlesRef.current[tempId]
+          materialsAPI.rename(result.material_id, localTitlesRef.current[tempId]).catch(() => {})
+        }
+        setMaterials(prev => prev.map(m => m.id === tempId ? newMat : m))
+        setRenameTarget(prev => (prev?.id === tempId ? newMat : prev))
+        toast.success('URL added! Processing in background...')
+        startPolling()
+      })
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : 'Failed to add URL'
+        toast.error(msg)
+        setMaterials(prev => prev.filter(m => m.id !== tempId))
+        setRenameTarget(prev => (prev?.id === tempId ? null : prev))
+        delete localTitlesRef.current[tempId]
+      })
   }
 
   const handleTopicSubmit = async () => {
@@ -205,36 +315,101 @@ export default function DashboardPage() {
       return
     }
 
-    setIsUploading(true)
+    setIsUploadOpen(false)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 800))
-      const newMaterial: Material = {
-        id: 'topic-' + Date.now(),
-        title: topicInput.trim(),
-        source_type: 'topic',
-        topic: topicInput.trim(),
-        status: 'ready',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-      saveMaterials([newMaterial, ...materials])
+      const result = await materialsAPI.addTopic(topicInput.trim())
       toast.success('Topic added successfully!')
       setTopicInput('')
-      setIsUploadOpen(false)
-    } finally {
-      setIsUploading(false)
+      const freshMaterials = await loadMaterials()
+      const newMat = freshMaterials.find(m => m.id === result.material_id)
+      if (newMat) {
+        setRenameTarget(newMat)
+        setRenameInput(newMat.title)
+      }
+    } catch (err: unknown) {
+      toast.error('Failed to add topic')
     }
   }
 
+  // ── Rename ──────────────────────────────────────────────────
   const handleRename = () => {
     if (!renameTarget || !renameInput.trim()) return
-    const updated = materials.map((m) =>
-      m.id === renameTarget.id ? { ...m, title: renameInput.trim() } : m
-    )
-    saveMaterials(updated)
-    toast.success('Material renamed!')
+    const targetId = renameTarget.id
+    const newTitle = renameInput.trim()
+
+    // Store in local overrides so polling can never wipe it
+    localTitlesRef.current[targetId] = newTitle
+
+    // Close dialog and update UI instantly
     setRenameTarget(null)
     setRenameInput('')
+    setMaterials(prev => {
+      const updated = prev.map(m => m.id === targetId ? { ...m, title: newTitle } : m)
+      localStorage.setItem('cached_materials', JSON.stringify(updated))
+      return updated
+    })
+    toast.success('Material renamed!')
+
+    // Fire API in background — only for real (non-temp) IDs
+    if (!targetId.startsWith('temp-')) {
+      materialsAPI.rename(targetId, newTitle).catch(() => {
+        toast.error('Failed to save rename — please try again')
+      })
+    }
+    // For temp IDs, the rename will be synced when upload completes (see upload handlers)
+  }
+
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return
+    setIsBulkDeleting(true)
+    setIsBulkDeleteDialogOpen(false)
+    try {
+      const realIds = selectedIds.filter(id => !id.startsWith('temp-'))
+      if (realIds.length > 0) {
+        await materialsAPI.bulkDelete(realIds)
+      }
+      
+      const updated = materials.filter((m) => !selectedIds.includes(m.id))
+      setMaterials(updated)
+      localStorage.setItem('cached_materials', JSON.stringify(updated))
+      // Clean up local title overrides for deleted IDs
+      for (const id of selectedIds) {
+        delete localTitlesRef.current[id]
+      }
+      toast.success(`${selectedIds.length} materials deleted`)
+      exitSelectionMode()
+    } catch (err: unknown) {
+      toast.error('Failed to delete some materials')
+      loadMaterials()
+    } finally {
+      setIsBulkDeleting(false)
+    }
+  }
+
+  const toggleSelection = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    )
+  }
+
+  const enterSelectionMode = (id: string) => {
+    setIsSelectionMode(true)
+    setSelectedIds([id])
+  }
+
+  const exitSelectionMode = () => {
+    setIsSelectionMode(false)
+    setSelectedIds([])
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === materials.length) {
+      setSelectedIds([])
+    } else {
+      setSelectedIds(materials.map(m => m.id))
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -268,140 +443,139 @@ export default function DashboardPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-          <div>
+          <div className="flex-1">
             <h1 className="text-2xl sm:text-3xl font-bold text-foreground">My Materials</h1>
             <p className="text-muted-foreground mt-1">
-              Upload and manage your learning materials
+              {selectedIds.length > 0
+                ? `${selectedIds.length} of ${materials.length} selected`
+                : 'Upload and manage your learning materials'}
             </p>
           </div>
 
-          <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
-            <DialogTrigger asChild>
-              <Button size="lg">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Material
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Add New Material</DialogTitle>
-                <DialogDescription>
-                  Upload a PDF, add an article URL, or enter a custom topic
-                </DialogDescription>
-              </DialogHeader>
-
-              <Tabs value={activeTab} onValueChange={isUploading ? undefined : setActiveTab} className="mt-4">
-                <TabsList className={`grid w-full grid-cols-3 ${isUploading ? 'pointer-events-none opacity-60' : ''}`}>
-                  <TabsTrigger value="pdf" className="gap-2" disabled={isUploading}>
-                    <FileText className="h-4 w-4" />
-                    <span className="hidden sm:inline">PDF</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="url" className="gap-2" disabled={isUploading}>
-                    <LinkIcon className="h-4 w-4" />
-                    <span className="hidden sm:inline">URL</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="topic" className="gap-2" disabled={isUploading}>
-                    <SquarePen className="h-4 w-4" />
-                    <span className="hidden sm:inline">Topic</span>
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="pdf" className="mt-4">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    accept=".pdf"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) handleFileUpload(file)
-                    }}
-                  />
-                  <div
-                    onClick={() => !isUploading && fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors"
-                  >
-                    {isUploading ? (
-                      <>
-                        <Loader2 className="h-10 w-10 mx-auto text-muted-foreground mb-4 animate-spin" />
-                        <p className="text-foreground font-medium">Uploading and processing...</p>
-                        <p className="text-sm text-muted-foreground mt-1">Embedding material content</p>
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-4" />
-                        <p className="text-foreground font-medium">Click to upload or drag and drop</p>
-                        <p className="text-sm text-muted-foreground mt-1">PDF files up to 10MB</p>
-                      </>
+          <div className="flex items-center gap-3">
+            {/* Circular Select All — only visible in selection mode */}
+            <AnimatePresence>
+              {isSelectionMode && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.6 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.6 }}
+                >
+                  <button
+                    onClick={toggleSelectAll}
+                    title={selectedIds.length === materials.length ? 'Deselect All' : 'Select All'}
+                    className={cn(
+                      "w-9 h-9 rounded-full border-2 flex items-center justify-center transition-all duration-200 shadow-sm",
+                      selectedIds.length === materials.length
+                        ? "bg-primary border-primary text-primary-foreground"
+                        : "bg-card border-border text-muted-foreground hover:border-primary/60 hover:text-foreground"
                     )}
-                  </div>
-                </TabsContent>
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-                <TabsContent value="url" className="mt-4 space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="url">Article URL</Label>
-                    <Input
-                      id="url"
-                      placeholder="https://example.com/article"
-                      value={urlInput}
-                      onChange={(e) => setUrlInput(e.target.value)}
-                      disabled={isUploading}
+            <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+              <DialogTrigger asChild>
+                <Button size="lg">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Material
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Add New Material</DialogTitle>
+                  <DialogDescription>
+                    Upload a PDF, add an article URL, or enter a custom topic
+                  </DialogDescription>
+                </DialogHeader>
+
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="pdf" className="gap-2 hover:bg-primary/5 transition-colors">
+                      <FileText className="h-4 w-4" />
+                      <span className="hidden sm:inline">PDF</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="url" className="gap-2 hover:bg-primary/5 transition-colors">
+                      <LinkIcon className="h-4 w-4" />
+                      <span className="hidden sm:inline">URL</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="topic" className="gap-2 hover:bg-primary/5 transition-colors">
+                      <SquarePen className="h-4 w-4" />
+                      <span className="hidden sm:inline">Topic</span>
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="pdf" className="mt-4">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      accept=".pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) handleFileUpload(file)
+                      }}
                     />
-                  </div>
-                  <Button
-                    onClick={handleURLSubmit}
-                    disabled={isUploading || !urlInput.trim()}
-                    className="w-full"
-                  >
-                    {isUploading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <LinkIcon className="mr-2 h-4 w-4" />
-                        Add Article
-                      </>
-                    )}
-                  </Button>
-                </TabsContent>
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors"
+                    >
+                      <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-4" />
+                      <p className="text-foreground font-medium">Click to upload or drag and drop</p>
+                      <p className="text-sm text-muted-foreground mt-1">PDF files up to 10MB</p>
+                    </div>
+                  </TabsContent>
 
-                <TabsContent value="topic" className="mt-4 space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="topic">Custom Topic</Label>
-                    <Input
-                      id="topic"
-                      placeholder="e.g. Quantum Physics, World War II, Python Programming..."
-                      value={topicInput}
-                      onChange={(e) => setTopicInput(e.target.value)}
-                      disabled={isUploading}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Study Mate will use AI to generate summaries, quizzes, and answer questions about this topic.
-                    </p>
-                  </div>
-                  <Button
-                    onClick={handleTopicSubmit}
-                    disabled={isUploading || !topicInput.trim()}
-                    className="w-full"
-                  >
-                    {isUploading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Adding Topic...
-                      </>
-                    ) : (
-                      <>
-                        <SquarePen className="mr-2 h-4 w-4" />
-                        Add Topic
-                      </>
-                    )}
-                  </Button>
-                </TabsContent>
-              </Tabs>
-            </DialogContent>
-          </Dialog>
+                  <TabsContent value="url" className="mt-4 space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="url">Article URL</Label>
+                      <Input
+                        id="url"
+                        placeholder="https://example.com/article"
+                        value={urlInput}
+                        onChange={(e) => setUrlInput(e.target.value)}
+                      />
+                    </div>
+                    <Button
+                      onClick={handleURLSubmit}
+                      disabled={!urlInput.trim()}
+                      className="w-full"
+                    >
+                      <LinkIcon className="mr-2 h-4 w-4" />
+                      Add Article
+                    </Button>
+                  </TabsContent>
+
+                  <TabsContent value="topic" className="mt-4 space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="topic">Custom Topic</Label>
+                      <Input
+                        id="topic"
+                        placeholder="e.g. Quantum Physics, World War II, Python Programming..."
+                        value={topicInput}
+                        onChange={(e) => setTopicInput(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Study Mate will use AI to generate summaries, quizzes, and answer questions about this topic.
+                      </p>
+                    </div>
+                    <Button
+                      onClick={handleTopicSubmit}
+                      disabled={!topicInput.trim()}
+                      className="w-full"
+                    >
+                      <SquarePen className="mr-2 h-4 w-4" />
+                      Add Topic
+                    </Button>
+                  </TabsContent>
+                </Tabs>
+
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         <AnimatePresence mode="popLayout">
@@ -409,6 +583,24 @@ export default function DashboardPage() {
             <div className="flex items-center justify-center py-16">
               <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
             </div>
+          ) : materialsError ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center py-16"
+            >
+              <div className="w-20 h-20 mx-auto bg-destructive/10 rounded-2xl flex items-center justify-center mb-6">
+                <AlertCircle className="w-10 h-10 text-destructive" />
+              </div>
+              <h3 className="text-xl font-semibold text-foreground mb-2">Failed to load materials</h3>
+              <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+                Could not connect to the server. Your materials are stored securely in the database.
+              </p>
+              <Button onClick={loadMaterials} variant="outline">
+                <Loader2 className="mr-2 h-4 w-4" />
+                Retry
+              </Button>
+            </motion.div>
           ) : materials.length === 0 ? (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -431,9 +623,11 @@ export default function DashboardPage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {materials.map((material, index) => {
                 const sourceType = sourceTypeConfig[material.source_type] || sourceTypeConfig.pdf
-                const status = statusConfig[material.status]
+                const status = statusConfig[material.status] || statusConfig.error
                 const SourceIcon = sourceType.icon
                 const StatusIcon = status.icon
+
+                const isTemp = material.id.startsWith('temp-')
 
                 return (
                   <motion.div
@@ -444,12 +638,42 @@ export default function DashboardPage() {
                     transition={{ delay: index * 0.05 }}
                   >
                     <Card
-                      className="group cursor-pointer hover:shadow-lg hover:border-primary/30 transition-all duration-300"
-                      onClick={() => router.push(`/material/${material.id}`)}
+                      className={cn(
+                        "group transition-all duration-300 relative overflow-hidden",
+                        isTemp ? "opacity-70 cursor-not-allowed border-dashed" : "cursor-pointer hover:shadow-lg hover:border-primary/30",
+                        selectedIds.includes(material.id) && "border-primary ring-1 ring-primary/30"
+                      )}
+                      onClick={() => {
+                        if (isTemp) return
+                        if (isSelectionMode) {
+                          toggleSelection(material.id)
+                        } else {
+                          router.push(`/material/${material.id}`)
+                        }
+                      }}
                     >
+                      {/* Small circle bubble at top-right — only in selection mode */}
+                      {!isTemp && isSelectionMode && (
+                        <div
+                          className="absolute top-3 right-3 z-10"
+                          onClick={(e) => toggleSelection(material.id, e)}
+                        >
+                          <div className={cn(
+                            "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-200 shadow-sm",
+                            selectedIds.includes(material.id)
+                              ? "bg-primary border-primary text-primary-foreground scale-110"
+                              : "bg-card border-border text-muted-foreground hover:border-primary/60"
+                          )}>
+                            {selectedIds.includes(material.id) && (
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       <CardContent className="p-6">
                         <div className="flex items-start justify-between mb-4">
-                          <div className={`p-2.5 rounded-xl ${sourceType.color}`}>
+                          <div className={cn("p-2.5 rounded-xl", sourceType.color)}>
                             <SourceIcon className="w-5 h-5" />
                           </div>
                           <div className="flex items-center gap-2">
@@ -459,25 +683,34 @@ export default function DashboardPage() {
                               />
                               {status.label}
                             </Badge>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <X className="h-3.5 w-3.5 rotate-45" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                                <DropdownMenuItem
-                                  className="cursor-pointer"
-                                  onClick={() => {
-                                    setRenameTarget(material)
-                                    setRenameInput(material.title)
-                                  }}
-                                >
-                                  <Pencil className="mr-2 h-4 w-4" />
-                                  Rename
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            {!isTemp && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                                  <DropdownMenuItem
+                                    className="cursor-pointer"
+                                    onClick={() => {
+                                      setRenameTarget(material)
+                                      setRenameInput(material.title)
+                                    }}
+                                  >
+                                    <Pencil className="mr-2 h-4 w-4" />
+                                    Rename
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    className="cursor-pointer text-destructive focus:text-destructive"
+                                    onClick={() => enterSelectionMode(material.id)}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
                           </div>
                         </div>
 
@@ -497,6 +730,87 @@ export default function DashboardPage() {
             </div>
           )}
         </AnimatePresence>
+
+        {/* Bulk Actions Bar */}
+        <AnimatePresence>
+          {selectedIds.length > 0 && (
+            <motion.div
+              initial={{ y: 100, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 100, opacity: 0 }}
+              className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] w-full max-w-md px-4"
+            >
+              <div className="bg-card text-foreground border border-border rounded-2xl p-4 shadow-2xl flex items-center justify-between gap-4 backdrop-blur-md">
+                <div className="flex items-center gap-3 pl-1">
+                  <div className="w-8 h-8 bg-primary/10 text-primary rounded-lg flex items-center justify-center font-bold text-sm">
+                    {selectedIds.length}
+                  </div>
+                  <span className="font-medium text-foreground">Selected</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-foreground"
+                    onClick={exitSelectionMode}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setIsBulkDeleteDialogOpen(true)}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete {selectedIds.length}
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Robust Deletion Blocking Modal */}
+        <Dialog open={isBulkDeleting}>
+          <DialogContent className="sm:max-w-md text-center p-12 pointer-events-none" hideCloseButton>
+            <div className="flex flex-col items-center">
+              <div className="w-20 h-20 bg-destructive/10 rounded-3xl flex items-center justify-center mb-6">
+                <Loader2 className="w-10 h-10 text-destructive animate-spin" />
+              </div>
+              <DialogTitle className="text-2xl font-bold mb-2">Deleting Materials</DialogTitle>
+              <DialogDescription className="text-base">
+                Please wait while we securely remove your data. 
+                <br /> This action cannot be undone.
+              </DialogDescription>
+              <div className="mt-8 flex items-center gap-2 text-sm text-muted-foreground bg-muted px-4 py-2 rounded-full">
+                <div className="flex items-center gap-1">
+                  {selectedIds.length} items being processed
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Bulk Delete Confirmation */}
+        <AlertDialog open={isBulkDeleteDialogOpen} onOpenChange={setIsBulkDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete {selectedIds.length} Materials?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete all selected materials? This will permanently remove all associated summaries, quizzes, and chat histories.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={handleBulkDelete}
+              >
+                Delete {selectedIds.length} items
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
 
       <Dialog open={!!renameTarget} onOpenChange={(open) => { if (!open) setRenameTarget(null) }}>

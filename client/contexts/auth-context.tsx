@@ -52,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null)
     localStorage.removeItem('auth_token')
     localStorage.removeItem('auth_user')
+    localStorage.removeItem('cached_materials')
   }
 
   const updateUser = (data: Partial<UserData>) => {

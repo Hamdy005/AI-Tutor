@@ -1,10 +1,11 @@
+import asyncio
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 
 from src.quiz_generator.quiz import smart_quiz_generator
-from src.store import get_material, get_chunks, get_summary, save_quiz, get_quizzes
-from src.dependencies import get_current_user_id, get_current_user
+from src.store import get_material, get_chunks, get_summary, save_quiz, get_quizzes, save_quiz_result, get_quiz_results
+from src.dependencies import get_current_user_id
 from src.config import settings
 
 router = APIRouter(prefix="/api/quiz", tags=["Quiz"])
@@ -28,7 +29,6 @@ class QuizResponse(BaseModel):
 async def get_quiz_list(
     material_id: Optional[str] = None,
     user_id: str = Depends(get_current_user_id),
-    current_user=Depends(get_current_user),
 ):
     return get_quizzes(material_id=material_id, user_id=user_id)
 
@@ -37,8 +37,8 @@ async def get_quiz_list(
 async def generate_quiz(
     body: QuizRequest,
     user_id: str = Depends(get_current_user_id),
-    current_user=Depends(get_current_user),
 ):
+    body.difficulty = body.difficulty.capitalize()
     if body.mcq_count < 1 or body.mcq_count > 20:
         raise HTTPException(400, "MCQ count must be between 1 and 20")
     if body.tf_count < 1 or body.tf_count > 20:
@@ -51,11 +51,15 @@ async def generate_quiz(
         if body.source_type == "web":
             if not body.topic:
                 raise HTTPException(400, "Topic is required for web-based quiz")
-            quiz = smart_quiz_generator(
-                difficulty=body.difficulty,
-                mcq_count=body.mcq_count,
-                tf_count=body.tf_count,
-                topic_title=body.topic,
+            loop = asyncio.get_event_loop()
+            quiz = await loop.run_in_executor(
+                None,
+                lambda: smart_quiz_generator(
+                    difficulty=body.difficulty,
+                    mcq_count=body.mcq_count,
+                    tf_count=body.tf_count,
+                    topic_title=body.topic,
+                )
             )
 
         elif body.source_type in ("pdf", "url"):
@@ -68,13 +72,17 @@ async def generate_quiz(
             summary_record = get_summary(body.material_id)
             summary_text = summary_record["summary"] if summary_record else None
 
-            quiz = smart_quiz_generator(
-                difficulty=body.difficulty,
-                mcq_count=body.mcq_count,
-                tf_count=body.tf_count,
-                material_id=body.material_id if mat.get("status") == "ready" else None,
-                summary=summary_text,
-                chunks=chunks_texts,
+            loop = asyncio.get_event_loop()
+            quiz = await loop.run_in_executor(
+                None,
+                lambda: smart_quiz_generator(
+                    difficulty=body.difficulty,
+                    mcq_count=body.mcq_count,
+                    tf_count=body.tf_count,
+                    material_id=body.material_id if mat.get("status") == "ready" else None,
+                    summary=summary_text,
+                    chunks=chunks_texts,
+                )
             )
         else:
             raise HTTPException(400, f"Unknown source_type: {body.source_type}")
@@ -95,3 +103,25 @@ async def generate_quiz(
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(500, f"Quiz generation failed: {e}")
+
+
+class SaveQuizResultRequest(BaseModel):
+    quiz_id: str
+    result_data: dict
+
+
+@router.post("/save-result")
+async def save_result(
+    body: SaveQuizResultRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    save_quiz_result(body.quiz_id, user_id, body.result_data)
+    return {"status": "ok"}
+
+
+@router.get("/results/{quiz_id}")
+async def load_results(
+    quiz_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    return get_quiz_results(quiz_id)

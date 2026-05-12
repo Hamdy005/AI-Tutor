@@ -1,6 +1,7 @@
 .venv
-src/__pycache__
+**/__pycache__
 config.env
+logs/
 .streamlit/
 
 # Node modules
@@ -10,5 +11,7 @@ client/node_modules/
 client/.next/
 client/out/
 client/build/
+client/.env.local
 
 manage_supabase.py
+dev.sh
