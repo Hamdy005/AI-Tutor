@@ -64,7 +64,8 @@ async def _process_pdf_background(material_id: str, file_content: bytes):
         # Skip processing if this user already has a material with this title
         mat = get_material(material_id)
         if mat and is_title_taken(mat.get("title", ""), exclude_id=material_id, user_id=mat.get("user_id")):
-            logger.info(f"Skipping processing for {material_id}: duplicate title, waiting for rename")
+            logger.info(f"Skipping processing for {material_id}: duplicate title")
+            update_material_status(material_id, "failed", "Duplicate title. Please rename to retry.")
             return
 
         loop = asyncio.get_event_loop()

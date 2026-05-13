@@ -285,8 +285,18 @@ export default function DashboardPage() {
           // Also rename on server since user renamed before upload finished
           materialsAPI.rename(result.material_id, localTitlesRef.current[tempId]).catch(() => { })
         }
-        setMaterials(prev => prev.map(m => m.id === tempId ? newMat : m))
-        setRenameTarget(prev => (prev?.id === tempId ? newMat : prev))
+        setMaterials(prev => prev.map(m => {
+          if (m.id === tempId) {
+            // If server already pushed a 'ready' status via poll, preserve it
+            const existingReady = prev.find(p => p.id === result.material_id && p.status === 'ready')
+            return {
+              ...newMat,
+              status: existingReady ? 'ready' : 'processing'
+            }
+          }
+          return m
+        }))
+        setRenameTarget(prev => (prev?.id === tempId ? { ...newMat, status: prev.status === 'ready' ? 'ready' : 'processing' } : prev))
         toast.success('PDF uploaded! Processing in background...')
         startPolling()
       })
@@ -340,8 +350,17 @@ export default function DashboardPage() {
           localTitlesRef.current[result.material_id] = localTitlesRef.current[tempId]
           materialsAPI.rename(result.material_id, localTitlesRef.current[tempId]).catch(() => { })
         }
-        setMaterials(prev => prev.map(m => m.id === tempId ? newMat : m))
-        setRenameTarget(prev => (prev?.id === tempId ? newMat : prev))
+        setMaterials(prev => prev.map(m => {
+          if (m.id === tempId) {
+            const existingReady = prev.find(p => p.id === result.material_id && p.status === 'ready')
+            return {
+              ...newMat,
+              status: existingReady ? 'ready' : 'processing'
+            }
+          }
+          return m
+        }))
+        setRenameTarget(prev => (prev?.id === tempId ? { ...newMat, status: prev.status === 'ready' ? 'ready' : 'processing' } : prev))
         toast.success('URL added! Processing in background...')
         startPolling()
       })
@@ -513,8 +532,8 @@ export default function DashboardPage() {
                 {searchResults !== null
                   ? `${displayMaterials.length} of ${materials.length} found`
                   : selectedIds.length > 0
-                  ? `${selectedIds.length} of ${materials.length} selected`
-                  : 'Upload and manage your learning materials'}
+                    ? `${selectedIds.length} of ${materials.length} selected`
+                    : 'Upload and manage your learning materials'}
               </p>
             </div>
 
@@ -932,8 +951,8 @@ export default function DashboardPage() {
             {renameTarget && renameInput.trim() && materials.some(
               (m) => m.id !== renameTarget.id && m.title.trim().toLowerCase() === renameInput.trim().toLowerCase()
             ) && (
-              <p className="text-sm text-destructive">A material with this title already exists.</p>
-            )}
+                <p className="text-sm text-destructive">A material with this title already exists.</p>
+              )}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setRenameTarget(null)}>Cancel</Button>
               <Button

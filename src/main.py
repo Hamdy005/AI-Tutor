@@ -11,6 +11,8 @@ from src.summary_generator.routes import router as summary_router
 from src.rag.routes import router as tutor_router
 from src.quiz_generator.routes import router as quiz_router
 from src.auth.routes import router as auth_router
+from src.store import get_usage
+from src.dependencies import get_current_user_id
 from src.config import settings
 
 # ── Logging Setup ──────────────────────────────────────
@@ -85,3 +87,8 @@ async def root():
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "service": "AI Tutor API"}
+
+
+@app.get("/api/usage")
+async def get_user_usage(user_id: str = Depends(get_current_user_id)):
+    return get_usage(user_id)

@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from src.summary_generator.summary import summarizer
-from src.store import get_material, get_chunks, save_summary, get_summary as get_stored_summary
+from src.store import get_material, get_chunks, save_summary, get_summary as get_stored_summary, check_and_increment_daily_limit
 from src.dependencies import get_current_user_id, get_current_user
 from src.config import settings
 
@@ -28,6 +28,11 @@ async def generate_summary(
     user_id: str = Depends(get_current_user_id),
     current_user=Depends(get_current_user),
 ):
+    # Rate limit check
+    user_email = current_user.get("email") if isinstance(current_user, dict) else getattr(current_user, "email", None)
+    if not check_and_increment_daily_limit(user_id, email=user_email, limit=10):
+        raise HTTPException(429, "Daily limit of 10 requests reached. Come back tomorrow!")
+
     mat = get_material(body.material_id)
     if not mat:
         raise HTTPException(404, "Material not found")

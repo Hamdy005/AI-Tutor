@@ -4,8 +4,8 @@ from pydantic import BaseModel
 from typing import Optional
 
 from src.quiz_generator.quiz import smart_quiz_generator
-from src.store import get_material, get_chunks, get_summary, save_quiz, get_quizzes, save_quiz_result, get_quiz_results
-from src.dependencies import get_current_user_id
+from src.store import get_material, get_chunks, get_summary, save_quiz, get_quizzes, save_quiz_result, get_quiz_results, check_and_increment_daily_limit
+from src.dependencies import get_current_user_id, get_current_user
 from src.config import settings
 
 router = APIRouter(prefix="/api/quiz", tags=["Quiz"])
@@ -37,7 +37,13 @@ async def get_quiz_list(
 async def generate_quiz(
     body: QuizRequest,
     user_id: str = Depends(get_current_user_id),
+    current_user=Depends(get_current_user),
 ):
+    # Rate limit check
+    user_email = current_user.get("email") if isinstance(current_user, dict) else getattr(current_user, "email", None)
+    if not check_and_increment_daily_limit(user_id, email=user_email, limit=10):
+        raise HTTPException(429, "Daily limit of 10 requests reached. Come back tomorrow!")
+
     body.difficulty = body.difficulty.capitalize()
     if body.mcq_count < 1 or body.mcq_count > 20:
         raise HTTPException(400, "MCQ count must be between 1 and 20")

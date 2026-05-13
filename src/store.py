@@ -1,5 +1,6 @@
+import os
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from langchain.memory import ConversationBufferMemory, ConversationBufferWindowMemory
 from src.database import get_supabase
 
@@ -11,6 +12,12 @@ _in_memory: dict = {
     "users": {},
     "next_id": 0,
 }
+
+ADMIN_EMAILS = set(
+    email.strip() 
+    for email in os.environ.get("ADMIN_EMAILS", "").split(",")
+    if email.strip()
+)
 
 
 def _get_next_id() -> str:
@@ -266,15 +273,12 @@ def get_summary(material_id: str) -> Optional[dict]:
             _table_supabase("summaries")
             .select("*")
             .eq("material_id", material_id)
-            .maybe_single()
             .execute()
         )
-        if not result or result.data is None:
+        if not result or not result.data:
             return None
-        # _make_response returns list; unwrap the first item
-        if isinstance(result.data, list):
-            return result.data[0] if result.data else None
-        return result.data
+        # Return the most recent one if duplicates exist
+        return result.data[0]
     except Exception:
         return None
 
@@ -520,3 +524,89 @@ def get_or_create_memory(memory_id: Optional[str] = None, seed_messages: list[di
                 )
     _memories[mid] = mem
     return mem, mid
+
+
+def check_and_increment_daily_limit(user_id: str, email: Optional[str] = None, limit: int = 10) -> bool:
+    """
+    Returns True if request is allowed, False if limit exceeded.
+    Excludes Admin Emails from Limits
+    """
+    # Exclude specific email from rate limiting
+    if email in ADMIN_EMAILS:
+        return True
+
+    today = date.today().isoformat()
+
+    try:
+        # Get current profile
+        result = _robust_execute(
+            _table_supabase("profiles")
+            .select("daily_requests, last_request_date")
+            .eq("id", user_id)
+            .maybe_single()
+        )
+        
+        # If no profile or data, allow (or we could create one, but usually it exists)
+        if not result.data:
+            return True
+        
+        # Handle both single object or list response from maybe_single/execute
+        profile = result.data[0] if isinstance(result.data, list) and result.data else result.data
+        if not profile:
+            return True
+
+        last_date = profile.get("last_request_date")
+        count = profile.get("daily_requests", 0) or 0
+
+        # Reset count if it's a new day
+        if last_date != today:
+            count = 0
+
+        # Check limit
+        if count >= limit:
+            return False
+
+        # Increment
+        _robust_execute(
+            _table_supabase("profiles")
+            .update({
+                "daily_requests": count + 1,
+                "last_request_date": today,
+            })
+            .eq("id", user_id)
+        )
+        return True
+    except Exception as e:
+        # If DB fails, we default to allowing the request to not break the app
+        import logging
+        logging.getLogger(__name__).error(f"Rate limit check failed: {e}")
+        return True
+
+
+def get_usage(user_id: str) -> dict:
+    """
+    Returns current usage for a user.
+    """
+    today = date.today().isoformat()
+    try:
+        result = _robust_execute(
+            _table_supabase("profiles")
+            .select("daily_requests, last_request_date")
+            .eq("id", user_id)
+            .maybe_single()
+        )
+        if not result.data:
+            return {"used": 0, "limit": 10, "remaining": 10}
+
+        profile = result.data[0] if isinstance(result.data, list) and result.data else result.data
+        if not profile:
+            return {"used": 0, "limit": 10, "remaining": 10}
+
+        used = profile.get("daily_requests", 0) if profile.get("last_request_date") == today else 0
+        return {
+            "used": used,
+            "limit": 10,
+            "remaining": max(0, 10 - used)
+        }
+    except Exception:
+        return {"used": 0, "limit": 10, "remaining": 10}

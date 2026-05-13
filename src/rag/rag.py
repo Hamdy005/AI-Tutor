@@ -71,6 +71,7 @@ async def store_embeddings_async(material_id: str, chunk_ids: list[str], chunks:
     from src.rag.batch_workers import EmbeddingJob, embedding_queue, job_store
 
     job = EmbeddingJob(job_id=str(uuid.uuid4()), texts=chunks)
+    job_store[job.job_id] = {"status": "pending", "result": None, "error": None}
     await embedding_queue.put(job)
     await job.done.wait()
 

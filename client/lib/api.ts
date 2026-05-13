@@ -259,3 +259,7 @@ export const quizAPI = {
 }
 
 
+
+export const usageAPI = {
+  getUsage: () => fetchAPI<{ used: number; limit: number; remaining: number }>('/api/usage'),
+}

@@ -134,23 +134,36 @@ async def embedding_worker():
                 job_result = all_embeddings[idx: idx + n]
                 idx += n
 
-                job_store[job.job_id]["status"] = "done"
-                job_store[job.job_id]["result"] = job_result
+                # Use .get() or setdefault to avoid KeyError if initialization was missed
+                if job.job_id not in job_store:
+                    job_store[job.job_id] = {"status": "pending", "result": None, "error": None}
+                
+                job_store[job.job_id].update({
+                    "status": "done",
+                    "result": job_result
+                })
                 job.done.set()
 
         except Exception as e:
             logger.error(f"Embedding batch failed: {e}", exc_info=True)
             for job in batch:
-                job_store[job.job_id]["status"] = "error"
-                job_store[job.job_id]["error"] = str(e)
-                job.done.set()
+                if job.job_id not in job_store:
+                    job_store[job.job_id] = {"status": "error", "result": None, "error": str(e)}
+                else:
+                    job_store[job.job_id].update({
+                        "status": "error",
+                        "error": str(e)
+                    })
+                # Critical: always set the event so the request doesn't hang
+                if not job.done.is_set():
+                    job.done.set()
         finally:
             set_request_in_flight(False)
 
 
 # ═══════════════════════ Warmup Loop ════════════════════════
 
-_WARMUP_INTERVAL_S = 45
+_WARMUP_INTERVAL_S = 300  # 5 minutes
 
 
 async def _warmup_loop():
@@ -187,7 +200,7 @@ def start_workers():
     """
     Launch all async worker coroutines. Call once during app startup.
 
-    - 2 embedding workers (batched SentenceTransformer inference)
+    - 1 embedding worker (batched SentenceTransformer inference)
     - 1 warmup loop (keeps OpenMP threads alive)
     """
     global _workers_started
@@ -195,8 +208,8 @@ def start_workers():
         return
     _workers_started = True
 
-    for i in range(2):
-        asyncio.create_task(embedding_worker(), name=f"embedding_worker_{i}")
+    # Use only 1 worker to save RAM on this environment
+    asyncio.create_task(embedding_worker(), name="embedding_worker_0")
     asyncio.create_task(_warmup_loop(), name="warmup_loop")
 
-    logger.info("Embedding batch workers started (2 workers + warmup loop)")
+    logger.info("Embedding batch workers started (1 worker + warmup loop)")
