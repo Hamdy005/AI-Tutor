@@ -14,12 +14,9 @@ export default function HomePage() {
               </div>
               <span className="text-xl font-bold text-foreground">Study Mate</span>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center">
               <Link href="/login">
-                <Button variant="ghost">Sign in</Button>
-              </Link>
-              <Link href="/signup">
-                <Button>Get Started</Button>
+                <Button>Sign in</Button>
               </Link>
             </div>
           </div>
@@ -35,16 +32,11 @@ export default function HomePage() {
           <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto text-pretty">
             Upload your learning materials, get instant summaries, chat with AI about any topic, and test your knowledge with auto-generated quizzes.
           </p>
-          <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/signup">
-              <Button size="lg" className="w-full sm:w-auto">
-                Start Learning Free
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
+          <div className="mt-10 flex justify-center">
             <Link href="/login">
-              <Button size="lg" variant="outline" className="w-full sm:w-auto">
+              <Button size="lg" className="w-full sm:w-auto">
                 Sign in to Dashboard
+                <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
           </div>
@@ -102,9 +94,9 @@ export default function HomePage() {
           <p className="text-lg text-muted-foreground mb-8">
             Join thousands of students who are already learning smarter with Study Mate.
           </p>
-          <Link href="/signup">
+          <Link href="/login">
             <Button size="lg">
-              Get Started for Free
+              Sign in to Dashboard
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </Link>

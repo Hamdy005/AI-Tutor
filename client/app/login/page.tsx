@@ -4,83 +4,17 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { GraduationCap, Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react'
+import { GraduationCap, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/auth-context'
-import { authAPI } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
-
-function hashEmail(email: string): string {
-  let hash = 0
-  for (let i = 0; i < email.length; i++) {
-    const char = email.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
-    hash = hash | 0
-  }
-  return 'demo-' + Math.abs(hash).toString(16).padStart(8, '0')
-}
 
 export default function LoginPage() {
   const router = useRouter()
   const { login } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  })
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
-
-  const validateForm = () => {
-    const newErrors: { email?: string; password?: string } = {}
-
-    if (!formData.email) {
-      newErrors.email = 'Email is required'
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email'
-    }
-
-    if (!formData.password) {
-      newErrors.password = 'Password is required'
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters'
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!validateForm()) return
-
-    setIsLoading(true)
-
-    try {
-      const data = await authAPI.login(formData.email, formData.password)
-      login(data.user, data.token)
-      toast.success('Successfully logged in!')
-      router.push('/dashboard')
-    } catch {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      const demoId = hashEmail(formData.email)
-      const demoUser = {
-        id: demoId,
-        name: formData.email.split('@')[0],
-        email: formData.email,
-      }
-      login(demoUser, demoId)
-      toast.success('Successfully logged in!')
-      router.push('/dashboard')
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true)
@@ -108,9 +42,9 @@ export default function LoginPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
+        className="w-full max-w-xl"
       >
-        <Card className="shadow-xl border-border/50">
+        <Card className="shadow-xl border border-primary/30">
           <CardHeader className="text-center space-y-4">
             <motion.div
               initial={{ scale: 0.8 }}
@@ -128,77 +62,15 @@ export default function LoginPage() {
             </div>
           </CardHeader>
 
-          <CardContent className="space-y-4">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="you@example.com"
-                    className={`pl-10 ${errors.email ? 'border-destructive' : ''}`}
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    disabled={isLoading}
-                  />
-                </div>
-                {errors.email && (
-                  <p className="text-sm text-destructive">{errors.email}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Enter your password"
-                    className={`pl-10 pr-10 ${errors.password ? 'border-destructive' : ''}`}
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    disabled={isLoading}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                {errors.password && (
-                  <p className="text-sm text-destructive">{errors.password}</p>
-                )}
-              </div>
-
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
-                  'Sign in'
-                )}
-              </Button>
-            </form>
-
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-border" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
-              </div>
+          <CardContent className="space-y-6">
+            <div className="rounded-2xl border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground mt-2">
+              <p className="text-foreground font-semibold mb-2">One-click access</p>
+              <p>Sign in with Google to keep your sessions, summaries, and quizzes synced across devices.</p>
             </div>
 
             <Button
               variant="outline"
-              className="w-full"
+              className="w-full h-12 text-base mt-2"
               onClick={handleGoogleSignIn}
               disabled={isLoading}
             >
@@ -220,21 +92,23 @@ export default function LoginPage() {
                   fill="#EA4335"
                 />
               </svg>
-              Continue with Google
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                'Continue with Google'
+              )}
             </Button>
+
           </CardContent>
-
-          <CardFooter className="flex justify-center">
-            <p className="text-sm text-muted-foreground">
-              {"Don't have an account?"}{' '}
-              <Link href="/signup" className="text-primary hover:underline font-medium">
-                Sign up
-              </Link>
-            </p>
-          </CardFooter>
         </Card>
-      </motion.div>
 
+        <div className="text-center mt-6">
+          <Link href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Back to home</Link>
+        </div>
+      </motion.div>
     </div>
   )
 }

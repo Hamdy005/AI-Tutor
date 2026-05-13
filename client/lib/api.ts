@@ -147,6 +147,12 @@ export const materialsAPI = {
       body: JSON.stringify({ topic }),
     }),
 
+  search: (q: string) =>
+    fetchAPI<{ results: string[] }>('/api/materials/search', {
+      method: 'POST',
+      body: JSON.stringify({ q }),
+    }),
+
   summarize: (material_id: string) =>
     fetchAPI<{ summary: string; time_taken: number }>('/api/materials/summarize', {
       method: 'POST',

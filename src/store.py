@@ -133,6 +133,32 @@ def list_materials(user_id: str) -> list[dict]:
     return list(reversed([r for r in records if r.get("user_id") == user_id]))
 
 
+def is_title_taken(title: str, exclude_id: Optional[str] = None, user_id: Optional[str] = None) -> bool:
+    normalized = title.strip().lower()
+    if not normalized:
+        return False
+    try:
+        query = _table_supabase("materials").select("id,title")
+        if user_id:
+            query = query.eq("user_id", user_id)
+        result = _robust_execute(query)
+        for row in result.data:
+            if exclude_id and row.get("id") == exclude_id:
+                continue
+            if row.get("title", "").strip().lower() == normalized:
+                return True
+    except Exception:
+        pass
+    for row in _in_memory.get("materials", {}).values():
+        if exclude_id and row.get("id") == exclude_id:
+            continue
+        if user_id and row.get("user_id") != user_id:
+            continue
+        if row.get("title", "").strip().lower() == normalized:
+            return True
+    return False
+
+
 def create_material(user_id: str, source_type: str, title: str,
                     file_path: Optional[str] = None,
                     url: Optional[str] = None,

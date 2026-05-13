@@ -2,13 +2,15 @@ import time
 import asyncio
 import logging
 import validators
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks, Header
 from pydantic import BaseModel
+from postgrest.exceptions import APIError
 
 from src.materials.text_utils import text_from_pdf, chunk_text, scrap_website
-from src.rag.rag import store_embeddings
-from src.store import create_material, get_material, update_material_status, save_chunks, list_materials, delete_material, rename_material
+from src.rag.rag import store_embeddings, store_embeddings_async
+from src.store import create_material, get_material, update_material_status, save_chunks, list_materials, delete_material, rename_material, is_title_taken
 from src.dependencies import get_current_user_id, get_current_user
+from src.database import get_supabase, get_auth_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -57,29 +59,43 @@ async def get_material_by_id(
         raise HTTPException(404, "Material not found")
     return mat
 
-def _process_pdf_background(material_id: str, file_content: bytes):
+async def _process_pdf_background(material_id: str, file_content: bytes):
     try:
+        # Skip processing if this user already has a material with this title
+        mat = get_material(material_id)
+        if mat and is_title_taken(mat.get("title", ""), exclude_id=material_id, user_id=mat.get("user_id")):
+            logger.info(f"Skipping processing for {material_id}: duplicate title, waiting for rename")
+            return
+
+        loop = asyncio.get_event_loop()
         from io import BytesIO
-        raw = text_from_pdf(BytesIO(file_content))
-        chunks = chunk_text(raw)
-        chunk_ids = save_chunks(material_id, chunks)
-        
+        raw = await loop.run_in_executor(None, text_from_pdf, BytesIO(file_content))
+        chunks = await loop.run_in_executor(None, chunk_text, raw)
+        chunk_ids = await loop.run_in_executor(None, save_chunks, material_id, chunks)
+
         update_material_status(material_id, "processing")
-        store_embeddings(material_id, chunk_ids, chunks)
+        await store_embeddings_async(material_id, chunk_ids, chunks)
         update_material_status(material_id, "ready")
         logger.info(f"Background processing complete for material {material_id}")
     except Exception as e:
         logger.error(f"Background processing failed for material {material_id}: {e}", exc_info=True)
         update_material_status(material_id, "failed", str(e))
 
-def _process_url_background(material_id: str, url: str):
+async def _process_url_background(material_id: str, url: str):
     try:
-        raw = scrap_website(url)
-        chunks = chunk_text(raw, chunk_size=600, chunk_overlap=100)
-        chunk_ids = save_chunks(material_id, chunks)
-        
+        # Skip if this user already has a material with this title
+        mat = get_material(material_id)
+        if mat and is_title_taken(mat.get("title", ""), exclude_id=material_id, user_id=mat.get("user_id")):
+            logger.info(f"Skipping URL processing for {material_id}: duplicate title, waiting for rename")
+            return
+
+        loop = asyncio.get_event_loop()
+        raw = await loop.run_in_executor(None, scrap_website, url)
+        chunks = await loop.run_in_executor(None, lambda: chunk_text(raw, chunk_size=600, chunk_overlap=100))
+        chunk_ids = await loop.run_in_executor(None, save_chunks, material_id, chunks)
+
         update_material_status(material_id, "processing")
-        store_embeddings(material_id, chunk_ids, chunks)
+        await store_embeddings_async(material_id, chunk_ids, chunks)
         update_material_status(material_id, "ready")
         logger.info(f"Background processing complete for URL material {material_id}")
     except Exception as e:
@@ -134,7 +150,9 @@ async def scrape_url(
         )
         material_id = material["id"]
 
-        background_tasks.add_task(_process_url_background, material_id, input.url)
+        # Skip processing if title conflicts — user must rename first
+        if not is_title_taken(input.url, exclude_id=material_id, user_id=user_id):
+            background_tasks.add_task(_process_url_background, material_id, input.url)
 
         return {
             "status": "processing_started",
@@ -184,7 +202,20 @@ async def rename_material_endpoint(
         raise HTTPException(404, "Material not found")
     if mat.get("user_id") != user_id:
         raise HTTPException(403, "Not authorized to rename this material")
-    await loop.run_in_executor(None, lambda: rename_material(material_id, body.title))
+    new_title = body.title.strip()
+    if not new_title:
+        raise HTTPException(400, "Title cannot be empty")
+    existing = await loop.run_in_executor(None, lambda: list_materials(user_id))
+    if any(m.get("id") != material_id and m.get("title", "").strip().lower() == new_title.lower() for m in existing):
+        raise HTTPException(409, "A material with this title already exists")
+    await loop.run_in_executor(None, lambda: rename_material(material_id, new_title))
+
+    # If the material was pending due to title conflict, try processing now
+    if mat.get("source_type") == "url" and mat.get("status") == "pending":
+        url = mat.get("url")
+        if url and not is_title_taken(new_title, exclude_id=material_id, user_id=user_id):
+            asyncio.ensure_future(_process_url_background(material_id, url))
+
     return {"status": "ok"}
 
 class TopicRequest(BaseModel):
@@ -195,6 +226,8 @@ async def create_topic(
     body: TopicRequest,
     user_id: str = Depends(get_current_user_id)
 ):
+    if is_title_taken(body.topic, user_id=user_id):
+        raise HTTPException(409, "A material with this title already exists")
     mat = create_material(
         user_id=user_id,
         title=body.topic.strip(),
@@ -203,6 +236,54 @@ async def create_topic(
     update_material_status(mat["id"], "ready", "Topic ready")
     return {"material_id": mat["id"], "title": mat["title"]}
 
+
+class SearchQuery(BaseModel):
+    q: str
+
+@router.post("/search")
+async def search_materials(
+    body: SearchQuery,
+    authorization: str = Header(None),
+):
+    if not body.q.strip():
+        return {"results": []}
+
+    anon_client = get_auth_supabase()
+    if anon_client is None:
+        return {"results": []}
+
+    if not authorization:
+        raise HTTPException(401, "Missing authorization token")
+
+    token = authorization.strip()
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+    if not token:
+        raise HTTPException(401, "Missing authorization token")
+
+    anon_client.postgrest.auth(token)
+
+    try:
+        result = anon_client.rpc(
+            "search_materials_by_title",
+            {"p_query": body.q.strip()},
+        ).execute()
+    except APIError as e:
+        payload = e.args[0] if e.args else None
+        message = None
+        code = None
+        status = getattr(e, "status_code", None)
+        if isinstance(payload, dict):
+            message = payload.get("message")
+            code = payload.get("code")
+            status = payload.get("status") or status
+        message_text = (message or str(e) or "").lower()
+        if status == 401 or code == "PGRST303" or "jwt expired" in message_text or "unauthorized" in message_text:
+            raise HTTPException(401, "Session expired. Please sign in again.")
+        raise HTTPException(500, f"Search failed: {message or 'Unknown error'}")
+
+    return {"results": [row["material_id"] for row in (result.data or [])]}
+    
 @router.delete("/{material_id}")
 async def delete_material_endpoint(
     material_id: str,

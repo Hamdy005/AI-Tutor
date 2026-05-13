@@ -1,7 +1,6 @@
 import uuid
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
 
 from src.database import get_auth_supabase
 from src.store import create_user, get_user_by_email
@@ -18,12 +17,6 @@ class SignupRequest(BaseModel):
     name: str
     email: str
     password: str
-
-
-class GoogleAuthRequest(BaseModel):
-    token: str
-    name: Optional[str] = None
-    email: Optional[str] = None
 
 
 @router.post("/login")
@@ -97,21 +90,6 @@ async def signup(body: SignupRequest):
         user = create_user(body.name, body.email, body.password)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return {
-        "token": str(uuid.uuid4()),
-        "user": {"id": user["id"], "name": user["name"], "email": user["email"]},
-    }
-
-
-@router.post("/google")
-async def google_auth(body: GoogleAuthRequest):
-    # Google OAuth would require supabase.auth.sign_in_with_id_token — not wired up yet
-    # Fall back to dev mode: create/fetch user by email
-    email = body.email or f"google_{uuid.uuid4().hex[:8]}@google.com"
-    name = body.name or "Google User"
-    user = get_user_by_email(email)
-    if not user:
-        user = create_user(name, email, "")
     return {
         "token": str(uuid.uuid4()),
         "user": {"id": user["id"], "name": user["name"], "email": user["email"]},

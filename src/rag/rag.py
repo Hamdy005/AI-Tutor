@@ -1,4 +1,6 @@
 import os
+import asyncio
+import uuid
 import logging
 from functools import lru_cache
 from typing import Optional
@@ -50,6 +52,45 @@ def store_embeddings(material_id: str, chunk_ids: list[str], chunks: list[str]):
         return
 
     logger.info(f"Storing {len(records)} embeddings in Supabase...")
+    for i in range(0, len(records), 50):
+        db.table("material_embeddings").insert(records[i:i + 50]).execute()
+    logger.info(f"Embeddings stored successfully for material {material_id}.")
+
+
+def warmup_embedder():
+    """Dummy forward pass to keep OpenMP/MKL thread pool alive during idle periods."""
+    embedder = get_embedder()
+    embedder.embed_documents(["warmup"])
+
+
+async def store_embeddings_async(material_id: str, chunk_ids: list[str], chunks: list[str]):
+    """
+    Async variant of store_embeddings that routes embedding inference through
+    the batch worker queue for batching across concurrent requests.
+    """
+    from src.rag.batch_workers import EmbeddingJob, embedding_queue, job_store
+
+    job = EmbeddingJob(job_id=str(uuid.uuid4()), texts=chunks)
+    await embedding_queue.put(job)
+    await job.done.wait()
+
+    entry = job_store[job.job_id]
+    if entry["status"] == "error":
+        raise RuntimeError(f"Embedding failed: {entry['error']}")
+
+    embeddings = entry["result"]
+
+    records = [
+        {"chunk_id": cid, "material_id": material_id, "embedding": emb}
+        for cid, emb in zip(chunk_ids, embeddings)
+    ]
+
+    db = get_supabase()
+    if db is None:
+        logger.warning("Supabase not connected — embeddings computed but NOT stored (no DB).")
+        return
+
+    logger.info(f"Storing {len(records)} embeddings in Supabase for material {material_id}...")
     for i in range(0, len(records), 50):
         db.table("material_embeddings").insert(records[i:i + 50]).execute()
     logger.info(f"Embeddings stored successfully for material {material_id}.")

@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import { supabase } from '@/lib/supabase'
 
 export interface UserData {
   id: string
@@ -38,6 +39,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     setIsLoading(false)
+  }, [])
+
+  useEffect(() => {
+    let isActive = true
+    const syncSupabaseSession = async () => {
+      try {
+        const { data } = await supabase.auth.getSession()
+        if (!isActive) return
+        const session = data.session
+        if (!session) return
+        const sbUser = session.user
+        const authToken = session.access_token
+        setToken(authToken)
+        localStorage.setItem('auth_token', authToken)
+        const updatedUser: UserData = {
+          id: sbUser.id,
+          name:
+            sbUser.user_metadata?.full_name ||
+            sbUser.user_metadata?.name ||
+            sbUser.email?.split('@')[0] ||
+            'User',
+          email: sbUser.email || '',
+          avatar: sbUser.user_metadata?.avatar_url,
+        }
+        setUser(updatedUser)
+        localStorage.setItem('auth_user', JSON.stringify(updatedUser))
+      } catch {
+        // supabase not available — nothing to sync
+      }
+    }
+
+    syncSupabaseSession()
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) return
+      const sbUser = session.user
+      const authToken = session.access_token
+      setToken(authToken)
+      localStorage.setItem('auth_token', authToken)
+      const updatedUser: UserData = {
+        id: sbUser.id,
+        name:
+          sbUser.user_metadata?.full_name ||
+          sbUser.user_metadata?.name ||
+          sbUser.email?.split('@')[0] ||
+          'User',
+        email: sbUser.email || '',
+        avatar: sbUser.user_metadata?.avatar_url,
+      }
+      setUser(updatedUser)
+      localStorage.setItem('auth_user', JSON.stringify(updatedUser))
+    })
+
+    return () => {
+      isActive = false
+      listener?.subscription.unsubscribe()
+    }
   }, [])
 
   const login = (userData: UserData, authToken: string) => {

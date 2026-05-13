@@ -48,6 +48,10 @@ async def lifespan(app: FastAPI):
         logger.info("Embedder loaded successfully.")
     except Exception as e:
         logger.warning(f"Embedder failed to load: {e}")
+
+    from src.rag.batch_workers import start_workers
+    start_workers()
+
     yield
 
 

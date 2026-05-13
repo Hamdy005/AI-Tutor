@@ -1,0 +1,202 @@
+"""
+Embedding Batch Workers — Async batching infrastructure for embedding inference.
+
+Architecture:
+  - Single asyncio.Queue for all embedding jobs.
+  - Dedicated async worker coroutines drain the queue in micro-batches.
+  - Workers offload heavy inference to a thread via run_in_executor.
+  - A shared in-memory job_store dict tracks job status + results.
+  - Warmup loop periodically does a dummy forward pass to keep OpenMP threads alive.
+"""
+
+import asyncio
+import time
+import uuid
+import logging
+from dataclasses import dataclass, field
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+# ═══════════════════════ Job Store ════════════════════════
+
+job_store: dict[str, dict[str, Any]] = {}
+"""
+{
+    "<job_id>": {
+        "status": "pending" | "processing" | "done" | "error",
+        "result": <list[list[float]] for EmbeddingJob> | None,
+        "error": <str> | None,
+    }
+}
+"""
+
+
+def create_job() -> str:
+    """Create a new pending job and return its ID."""
+    job_id = str(uuid.uuid4())
+    job_store[job_id] = {"status": "pending", "result": None, "error": None}
+    return job_id
+
+
+# ═══════════════════════ Request-in-Flight Gate ════════════════════════
+
+_request_in_flight_count = 0
+
+
+def set_request_in_flight(active: bool):
+    """Increment/decrement in-flight counter. Thread-safe enough for a gate."""
+    global _request_in_flight_count
+    if active:
+        _request_in_flight_count += 1
+    else:
+        _request_in_flight_count = max(0, _request_in_flight_count - 1)
+
+
+def is_request_in_flight() -> bool:
+    return _request_in_flight_count > 0
+
+
+# ═══════════════════════ Job Dataclasses ════════════════════════
+
+@dataclass
+class EmbeddingJob:
+    """Batch embedding of multiple texts (for store_embeddings)."""
+    job_id: str
+    texts: list[str]
+    done: asyncio.Event = field(default_factory=asyncio.Event)
+
+
+# ═══════════════════════ Queue ════════════════════════
+
+embedding_queue: asyncio.Queue[EmbeddingJob] = asyncio.Queue()
+
+
+# ═══════════════════════ Workers ════════════════════════
+
+_BATCH_MAX_SIZE = 8
+_BATCH_WINDOW_S = 0.05
+
+
+async def embedding_worker():
+    """
+    Drains up to {_BATCH_MAX_SIZE} embedding jobs every {_BATCH_WINDOW_S * 1000:.0f}ms.
+
+    One SentenceTransformer forward pass per batch:
+      1. Collect texts from all jobs in the batch
+      2. get_embedder().embed_documents(all_texts) → raw [B, D] embeddings
+      3. Distribute results back to individual jobs
+
+    Results are written into job_store and each job's done Event is set.
+    """
+    from src.rag.rag import get_embedder
+
+    loop = asyncio.get_event_loop()
+
+    while True:
+        # Wait for at least one job
+        first_job: EmbeddingJob = await embedding_queue.get()
+        batch: list[EmbeddingJob] = [first_job]
+
+        # Collect up to 7 more within the time window
+        deadline = loop.time() + _BATCH_WINDOW_S
+        while len(batch) < _BATCH_MAX_SIZE:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                break
+            try:
+                job = await asyncio.wait_for(embedding_queue.get(), timeout=remaining)
+                batch.append(job)
+            except asyncio.TimeoutError:
+                break
+
+        try:
+            set_request_in_flight(True)
+
+            # Gather all texts from all jobs in the batch
+            all_texts: list[str] = []
+            text_counts: list[int] = []
+            for job in batch:
+                all_texts.extend(job.texts)
+                text_counts.append(len(job.texts))
+
+            # Single forward pass for the entire batch
+            embedder = get_embedder()
+            all_embeddings = await loop.run_in_executor(
+                None, embedder.embed_documents, all_texts
+            )
+
+            # Distribute results back to individual jobs
+            idx = 0
+            for i, job in enumerate(batch):
+                n = text_counts[i]
+                job_result = all_embeddings[idx: idx + n]
+                idx += n
+
+                job_store[job.job_id]["status"] = "done"
+                job_store[job.job_id]["result"] = job_result
+                job.done.set()
+
+        except Exception as e:
+            logger.error(f"Embedding batch failed: {e}", exc_info=True)
+            for job in batch:
+                job_store[job.job_id]["status"] = "error"
+                job_store[job.job_id]["error"] = str(e)
+                job.done.set()
+        finally:
+            set_request_in_flight(False)
+
+
+# ═══════════════════════ Warmup Loop ════════════════════════
+
+_WARMUP_INTERVAL_S = 45
+
+
+async def _warmup_loop():
+    """
+    Periodically does a dummy forward pass to prevent OpenMP/MKL thread pool
+    spin-down during idle periods.
+
+    Skipped entirely if a real request is in flight.
+    """
+    from src.rag.rag import warmup_embedder
+
+    loop = asyncio.get_event_loop()
+
+    while True:
+        await asyncio.sleep(_WARMUP_INTERVAL_S)
+        if is_request_in_flight():
+            continue
+        t0 = time.monotonic()
+        try:
+            await loop.run_in_executor(None, warmup_embedder)
+        except Exception as e:
+            logger.warning(f"Warmup cycle error (non-fatal): {e}")
+            continue
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        logger.info(f"Warmup cycle done ({elapsed_ms:.0f}ms)")
+
+
+# ═══════════════════════ Startup ════════════════════════
+
+_workers_started = False
+
+
+def start_workers():
+    """
+    Launch all async worker coroutines. Call once during app startup.
+
+    - 2 embedding workers (batched SentenceTransformer inference)
+    - 1 warmup loop (keeps OpenMP threads alive)
+    """
+    global _workers_started
+    if _workers_started:
+        return
+    _workers_started = True
+
+    for i in range(2):
+        asyncio.create_task(embedding_worker(), name=f"embedding_worker_{i}")
+    asyncio.create_task(_warmup_loop(), name="warmup_loop")
+
+    logger.info("Embedding batch workers started (2 workers + warmup loop)")

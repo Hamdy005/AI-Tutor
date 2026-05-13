@@ -19,6 +19,8 @@ import {
   SquarePen,
   Pencil,
   Trash2,
+  Search,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -88,9 +90,13 @@ export default function DashboardPage() {
   const [isSelectionMode, setIsSelectionMode] = useState(false)
   const [isBulkDeleting, setIsBulkDeleting] = useState(false)
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<string[] | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadCounterRef = useRef(0)
 
   // Track local title overrides so polling never wipes user renames
   const localTitlesRef = useRef<Record<string, string>>({})
@@ -177,16 +183,28 @@ export default function DashboardPage() {
   }, [token])
 
   const loadMaterials = async () => {
+    const callId = ++loadCounterRef.current
     setIsLoadingMaterials(true)
     setMaterialsError(false)
+
+    if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current)
+    loadingTimeoutRef.current = setTimeout(() => {
+      if (loadCounterRef.current === callId) {
+        setIsLoadingMaterials(false)
+        setMaterials(prev => [...prev])
+      }
+    }, 10000)
+
     try {
       const data = await materialsAPI.list()
+      if (loadCounterRef.current !== callId) return []
       const sorted = data.sort((a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       )
       mergeWithServer(sorted)
       return sorted
     } catch (err: unknown) {
+      if (loadCounterRef.current !== callId) return []
       console.error('Failed to load materials:', err)
       const cached = localStorage.getItem('cached_materials')
       if (!cached) {
@@ -195,9 +213,36 @@ export default function DashboardPage() {
       }
       return []
     } finally {
-      setIsLoadingMaterials(false)
+      if (loadCounterRef.current === callId) {
+        setIsLoadingMaterials(false)
+        if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current)
+        loadingTimeoutRef.current = null
+      }
     }
   }
+
+  // ── Search ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults(null)
+      return
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await materialsAPI.search(searchQuery.trim())
+        setSearchResults(res.results)
+      } catch {
+        setSearchResults([])
+      }
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  const displayMaterials = searchResults !== null
+    ? materials.filter(m => searchResults.includes(m.id))
+    : materials
 
   // ── Upload Handlers ─────────────────────────────────────────
   const handleFileUpload = (file: File) => {
@@ -315,6 +360,13 @@ export default function DashboardPage() {
       return
     }
 
+    const normalizedTitle = topicInput.trim().toLowerCase()
+    const duplicateTitle = materials.some((m) => m.title.trim().toLowerCase() === normalizedTitle)
+    if (duplicateTitle) {
+      toast.error('A material with this title already exists')
+      return
+    }
+
     setIsUploadOpen(false)
     try {
       const result = await materialsAPI.addTopic(topicInput.trim())
@@ -336,6 +388,14 @@ export default function DashboardPage() {
     if (!renameTarget || !renameInput.trim()) return
     const targetId = renameTarget.id
     const newTitle = renameInput.trim()
+    const normalizedTitle = newTitle.toLowerCase()
+    const hasConflict = materials.some(
+      (m) => m.id !== targetId && m.title.trim().toLowerCase() === normalizedTitle
+    )
+    if (hasConflict) {
+      toast.error('Title already exists. Please choose a unique name.')
+      return
+    }
 
     // Store in local overrides so polling can never wipe it
     localTitlesRef.current[targetId] = newTitle
@@ -352,8 +412,11 @@ export default function DashboardPage() {
 
     // Fire API in background — only for real (non-temp) IDs
     if (!targetId.startsWith('temp-')) {
-      materialsAPI.rename(targetId, newTitle).catch(() => {
-        toast.error('Failed to save rename — please try again')
+      materialsAPI.rename(targetId, newTitle).then(() => {
+        startPolling()
+      }).catch((err) => {
+        const msg = err instanceof Error ? err.message : 'Failed to save rename — please try again'
+        toast.error(msg)
       })
     }
     // For temp IDs, the rename will be synced when upload completes (see upload handlers)
@@ -405,10 +468,10 @@ export default function DashboardPage() {
   }
 
   const toggleSelectAll = () => {
-    if (selectedIds.length === materials.length) {
+    if (selectedIds.length === displayMaterials.length) {
       setSelectedIds([])
     } else {
-      setSelectedIds(materials.map(m => m.id))
+      setSelectedIds(displayMaterials.map(m => m.id))
     }
   }
 
@@ -442,139 +505,160 @@ export default function DashboardPage() {
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-          <div className="flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">My Materials</h1>
-            <p className="text-muted-foreground mt-1">
-              {selectedIds.length > 0
-                ? `${selectedIds.length} of ${materials.length} selected`
-                : 'Upload and manage your learning materials'}
-            </p>
+        <div className="mb-8 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground">My Materials</h1>
+              <p className="text-muted-foreground mt-1">
+                {searchResults !== null
+                  ? `${displayMaterials.length} of ${materials.length} found`
+                  : selectedIds.length > 0
+                  ? `${selectedIds.length} of ${materials.length} selected`
+                  : 'Upload and manage your learning materials'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <AnimatePresence>
+                {isSelectionMode && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.6 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.6 }}
+                  >
+                    <button
+                      onClick={toggleSelectAll}
+                      title={selectedIds.length === displayMaterials.length ? 'Deselect All' : 'Select All'}
+                      className={cn(
+                        "w-9 h-9 rounded-full border-2 flex items-center justify-center transition-all duration-200 shadow-sm",
+                        selectedIds.length === displayMaterials.length
+                          ? "bg-primary border-primary text-primary-foreground"
+                          : "bg-card border-border text-muted-foreground hover:border-primary/60 hover:text-foreground"
+                      )}
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+                <DialogTrigger asChild>
+                  <Button size="lg">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Material
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle>Add New Material</DialogTitle>
+                    <DialogDescription>
+                      Upload a PDF, add an article URL, or enter a custom topic
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
+                    <TabsList className="grid w-full grid-cols-3">
+                      <TabsTrigger value="pdf" className="gap-2 hover:bg-primary/5 transition-colors">
+                        <FileText className="h-4 w-4" />
+                        <span className="hidden sm:inline">PDF</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="url" className="gap-2 hover:bg-primary/5 transition-colors">
+                        <LinkIcon className="h-4 w-4" />
+                        <span className="hidden sm:inline">URL</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="topic" className="gap-2 hover:bg-primary/5 transition-colors">
+                        <SquarePen className="h-4 w-4" />
+                        <span className="hidden sm:inline">Topic</span>
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="pdf" className="mt-4">
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        accept=".pdf"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) handleFileUpload(file)
+                        }}
+                      />
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        className="border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors"
+                      >
+                        <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-4" />
+                        <p className="text-foreground font-medium">Click to upload or drag and drop</p>
+                        <p className="text-sm text-muted-foreground mt-1">PDF files up to 10MB</p>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="url" className="mt-4 space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="url">Article URL</Label>
+                        <Input
+                          id="url"
+                          placeholder="https://example.com/article"
+                          value={urlInput}
+                          onChange={(e) => setUrlInput(e.target.value)}
+                        />
+                      </div>
+                      <Button
+                        onClick={handleURLSubmit}
+                        disabled={!urlInput.trim()}
+                        className="w-full"
+                      >
+                        <LinkIcon className="mr-2 h-4 w-4" />
+                        Add Article
+                      </Button>
+                    </TabsContent>
+
+                    <TabsContent value="topic" className="mt-4 space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="topic">Custom Topic</Label>
+                        <Input
+                          id="topic"
+                          placeholder="e.g. Quantum Physics, World War II, Python Programming..."
+                          value={topicInput}
+                          onChange={(e) => setTopicInput(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Study Mate will use AI to generate summaries, quizzes, and answer questions about this topic.
+                        </p>
+                      </div>
+                      <Button
+                        onClick={handleTopicSubmit}
+                        disabled={!topicInput.trim()}
+                        className="w-full"
+                      >
+                        <SquarePen className="mr-2 h-4 w-4" />
+                        Add Topic
+                      </Button>
+                    </TabsContent>
+                  </Tabs>
+
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Circular Select All — only visible in selection mode */}
-            <AnimatePresence>
-              {isSelectionMode && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.6 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.6 }}
-                >
-                  <button
-                    onClick={toggleSelectAll}
-                    title={selectedIds.length === materials.length ? 'Deselect All' : 'Select All'}
-                    className={cn(
-                      "w-9 h-9 rounded-full border-2 flex items-center justify-center transition-all duration-200 shadow-sm",
-                      selectedIds.length === materials.length
-                        ? "bg-primary border-primary text-primary-foreground"
-                        : "bg-card border-border text-muted-foreground hover:border-primary/60 hover:text-foreground"
-                    )}
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
-              <DialogTrigger asChild>
-                <Button size="lg">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Material
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>Add New Material</DialogTitle>
-                  <DialogDescription>
-                    Upload a PDF, add an article URL, or enter a custom topic
-                  </DialogDescription>
-                </DialogHeader>
-
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="pdf" className="gap-2 hover:bg-primary/5 transition-colors">
-                      <FileText className="h-4 w-4" />
-                      <span className="hidden sm:inline">PDF</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="url" className="gap-2 hover:bg-primary/5 transition-colors">
-                      <LinkIcon className="h-4 w-4" />
-                      <span className="hidden sm:inline">URL</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="topic" className="gap-2 hover:bg-primary/5 transition-colors">
-                      <SquarePen className="h-4 w-4" />
-                      <span className="hidden sm:inline">Topic</span>
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="pdf" className="mt-4">
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      accept=".pdf"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0]
-                        if (file) handleFileUpload(file)
-                      }}
-                    />
-                    <div
-                      onClick={() => fileInputRef.current?.click()}
-                      className="border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors"
-                    >
-                      <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-4" />
-                      <p className="text-foreground font-medium">Click to upload or drag and drop</p>
-                      <p className="text-sm text-muted-foreground mt-1">PDF files up to 10MB</p>
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="url" className="mt-4 space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="url">Article URL</Label>
-                      <Input
-                        id="url"
-                        placeholder="https://example.com/article"
-                        value={urlInput}
-                        onChange={(e) => setUrlInput(e.target.value)}
-                      />
-                    </div>
-                    <Button
-                      onClick={handleURLSubmit}
-                      disabled={!urlInput.trim()}
-                      className="w-full"
-                    >
-                      <LinkIcon className="mr-2 h-4 w-4" />
-                      Add Article
-                    </Button>
-                  </TabsContent>
-
-                  <TabsContent value="topic" className="mt-4 space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="topic">Custom Topic</Label>
-                      <Input
-                        id="topic"
-                        placeholder="e.g. Quantum Physics, World War II, Python Programming..."
-                        value={topicInput}
-                        onChange={(e) => setTopicInput(e.target.value)}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Study Mate will use AI to generate summaries, quizzes, and answer questions about this topic.
-                      </p>
-                    </div>
-                    <Button
-                      onClick={handleTopicSubmit}
-                      disabled={!topicInput.trim()}
-                      className="w-full"
-                    >
-                      <SquarePen className="mr-2 h-4 w-4" />
-                      Add Topic
-                    </Button>
-                  </TabsContent>
-                </Tabs>
-
-              </DialogContent>
-            </Dialog>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Search materials..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-9"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -601,6 +685,24 @@ export default function DashboardPage() {
                 Retry
               </Button>
             </motion.div>
+          ) : displayMaterials.length === 0 && searchResults !== null ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center py-16"
+            >
+              <div className="w-20 h-20 mx-auto bg-muted rounded-2xl flex items-center justify-center mb-6">
+                <Search className="w-10 h-10 text-muted-foreground" />
+              </div>
+              <h3 className="text-xl font-semibold text-foreground mb-2">No results found</h3>
+              <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+                No materials match "{searchQuery}". Try a different search term.
+              </p>
+              <Button onClick={() => setSearchQuery('')} variant="outline">
+                <X className="mr-2 h-4 w-4" />
+                Clear search
+              </Button>
+            </motion.div>
           ) : materials.length === 0 ? (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -621,7 +723,7 @@ export default function DashboardPage() {
             </motion.div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {materials.map((material, index) => {
+              {displayMaterials.map((material, index) => {
                 const sourceType = sourceTypeConfig[material.source_type] || sourceTypeConfig.pdf
                 const status = statusConfig[material.status] || statusConfig.error
                 const SourceIcon = sourceType.icon
@@ -827,9 +929,21 @@ export default function DashboardPage() {
               onKeyDown={(e) => { if (e.key === 'Enter') handleRename() }}
               autoFocus
             />
+            {renameTarget && renameInput.trim() && materials.some(
+              (m) => m.id !== renameTarget.id && m.title.trim().toLowerCase() === renameInput.trim().toLowerCase()
+            ) && (
+              <p className="text-sm text-destructive">A material with this title already exists.</p>
+            )}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setRenameTarget(null)}>Cancel</Button>
-              <Button onClick={handleRename} disabled={!renameInput.trim()}>Rename</Button>
+              <Button
+                onClick={handleRename}
+                disabled={!renameInput.trim() || (renameTarget ? materials.some(
+                  (m) => m.id !== renameTarget.id && m.title.trim().toLowerCase() === renameInput.trim().toLowerCase()
+                ) : false)}
+              >
+                Rename
+              </Button>
             </div>
           </div>
         </DialogContent>
