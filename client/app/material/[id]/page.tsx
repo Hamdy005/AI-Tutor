@@ -68,23 +68,28 @@ function renderMarkdown(text: string) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     const trimmed = line.trim()
-    if (trimmed.startsWith('### ')) {
-      elements.push(<h3 key={key++} className="font-bold text-base mt-3 mb-1">{trimmed.slice(4)}</h3>)
-    } else if (trimmed.startsWith('## ')) {
-      elements.push(<h2 key={key++} className="font-bold text-lg mt-4 mb-2">{trimmed.slice(3)}</h2>)
-    } else if (trimmed.startsWith('# ')) {
-      elements.push(<h1 key={key++} className="font-bold text-xl mt-4 mb-2">{trimmed.slice(2)}</h1>)
-    } else if (trimmed.startsWith('- ')) {
+    const headerMatch = trimmed.match(/^(#{1,3})\s*(.+)/)
+    if (headerMatch) {
+      const level = headerMatch[1].length
+      const content = headerMatch[2].trim()
+      if (level === 1) {
+        elements.push(<h1 key={key++} className="font-bold text-xl mt-4 mb-2">{content}</h1>)
+      } else if (level === 2) {
+        elements.push(<h2 key={key++} className="font-bold text-lg mt-4 mb-2">{content}</h2>)
+      } else {
+        elements.push(<h3 key={key++} className="font-bold text-base mt-3 mb-1">{content}</h3>)
+      }
+    } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('+ ')) {
       const content = trimmed.slice(2).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      elements.push(<li key={key++} className="ml-4 list-disc text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: content }} />)
+      elements.push(<li key={key++} className="ml-4 list-disc leading-relaxed" dangerouslySetInnerHTML={{ __html: content }} />)
     } else if (trimmed.match(/^\d+\.\s/)) {
       const content = trimmed.replace(/^\d+\.\s/, '').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      elements.push(<li key={key++} className="ml-4 list-decimal text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: content }} />)
+      elements.push(<li key={key++} className="ml-4 list-decimal leading-relaxed" dangerouslySetInnerHTML={{ __html: content }} />)
     } else if (trimmed === '') {
       elements.push(<div key={key++} className="h-2" />)
     } else {
       const content = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      elements.push(<p key={key++} className="text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: content }} />)
+      elements.push(<p key={key++} className="leading-relaxed" dangerouslySetInnerHTML={{ __html: content }} />)
     }
   }
   return elements
@@ -141,6 +146,7 @@ function printAsPDF(title: string, contentHtml: string) {
         .summary-p { margin-bottom: 12px; color: #334155; font-size: 15px; }
         .summary-list-item { margin-left: 0; margin-bottom: 10px; color: #334155; padding-left: 20px; position: relative; font-size: 15px; }
         .summary-list-item::before { content: "•"; position: absolute; left: 0; color: #1a1a2e; font-weight: bold; }
+        .summary-numbered-item { margin-left: 0; margin-bottom: 10px; color: #334155; font-size: 15px; }
         .topic-bold { font-weight: 700; color: #0f172a; }
         
         @media print { 
@@ -302,7 +308,7 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
         </div>
       </nav>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
           <Button
             variant="ghost"
@@ -479,6 +485,7 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
         const result = await materialsAPI.getSummary(materialId)
         if (result.summary && isMounted.current) {
           setSummary(result.summary)
+          setIsLoadingExisting(false)
           setIsGenerating(false)
           localStorage.removeItem(`generating_summary_${materialId}`)
           clearInterval(pollingRef.current!)
@@ -535,6 +542,7 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
       return
     }
 
+    setIsLoadingExisting(false)
     setIsGenerating(true)
     localStorage.setItem(`generating_summary_${materialId}`, 'true')
     startSummaryPoller() // Start polling in case we navigate away and back
@@ -543,6 +551,7 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
       const result = await materialsAPI.summarize(materialId)
       if (isMounted.current) {
         setSummary(result.summary)
+        setIsLoadingExisting(false)
         toast.success('Summary generated!')
       }
     } catch {
@@ -561,6 +570,7 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
 
   const handleExportPDF = () => {
     if (!summary) return
+    let subIndex = 0
     const html = summary
       .split('\n')
       .map((p) => {
@@ -568,30 +578,35 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
         if (!trimmed) return ''
 
         // Headers
-        if (trimmed.startsWith('####')) {
-          const content = trimmed.replace(/^#+\s+/, '')
+        const mainMatch = trimmed.match(/^\[\[\[###\s*(.+?)\s*###\]\]\]$/)
+        const subMatch = trimmed.match(/^\[\[\[>>>\s*(.+?)\s*<<<\]\]\]$/)
+
+        if (mainMatch || trimmed.startsWith('###')) {
+          const content = mainMatch ? mainMatch[1] : trimmed.replace(/^#+\s+/, '')
+          return `<h2 class="summary-h2">${content}</h2>`
+        }
+        if (subMatch || trimmed.startsWith('####')) {
+          subIndex++
+          const content = subMatch ? subMatch[1] : trimmed.replace(/^#+\s+/, '')
           const hasNumbering = /^\d+[\.\-]/.test(content)
-          return `<h4 class="summary-h4">${hasNumbering ? '' : '<span>•</span>'}${content}</h4>`
+          return `<h4 class="summary-h4">${subIndex}. ${hasNumbering ? '' : '<span>•</span>'}${content}</h4>`
         }
         if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
           return `<h2 class="summary-h2">${trimmed.replace(/\*\*/g, '')}</h2>`
         }
-        if (trimmed.startsWith('###')) {
-          return `<h2 class="summary-h2">${trimmed.replace(/^#+\s+/, '')}</h2>`
+
+        // Numbered list (no bullet)
+        if (trimmed.match(/^\d+\./)) {
+          let content = trimmed
+          if (content.includes('**')) {
+            content = content.replace(/\*\*(.*?)\*\*/g, '<span class="topic-bold">$1</span>')
+          }
+          return `<div class="summary-numbered-item">${content}</div>`
         }
 
         // List item with potential bold topic
         if (trimmed.startsWith('- ')) {
           let content = trimmed.slice(2)
-          if (content.includes('**')) {
-            content = content.replace(/\*\*(.*?)\*\*/g, '<span class="topic-bold">$1</span>')
-          }
-          return `<div class="summary-list-item">${content}</div>`
-        }
-
-        // Numbered list
-        if (trimmed.match(/^\d+\./)) {
-          let content = trimmed
           if (content.includes('**')) {
             content = content.replace(/\*\*(.*?)\*\*/g, '<span class="topic-bold">$1</span>')
           }
@@ -637,7 +652,7 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
     )
   }
 
-  if (isLoadingExisting) {
+  if (isLoadingExisting && !summary && !isGenerating) {
     return (
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="text-center py-12">
@@ -653,14 +668,14 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
       {isGenerating ? (
         <Card className="text-center py-16">
-          <CardContent>
-            <div className="w-16 h-16 mx-auto bg-primary/10 rounded-2xl flex items-center justify-center mb-6">
+          <CardContent className="flex flex-col items-center gap-6">
+            <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center">
               <Loader2 className="w-8 h-8 text-primary animate-spin" />
             </div>
-            <h3 className="text-xl font-semibold text-foreground mb-2">Generating Summary</h3>
-            <p className="text-muted-foreground max-w-md mx-auto">
-              AI is generating a summary of your material. This may take a while...
-            </p>
+            <div className="flex flex-col gap-1">
+              <span className="text-xl font-semibold text-foreground">Generating your summary</span>
+              <span className="text-muted-foreground">This might take a while...</span>
+            </div>
           </CardContent>
         </Card>
       ) : !summary ? (
@@ -702,18 +717,28 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
                   const trimmed = line.trim()
                   if (!trimmed) return
 
-                  // Parse headers (### or ####) or Bold titles as headers
-                  const headerMatch = line.match(/^(#{3,4})\s+(.+)/)
+                  // Parse new unique markers
+                  const mainHeaderMatch = trimmed.match(/^\[\[\[###\s*(.+?)\s*###\]\]\]$/)
+                  const subHeaderMatch = trimmed.match(/^\[\[\[>>>\s*(.+?)\s*<<<\]\]\]$/)
+                  
+                  // Legacy/Fallback matches
+                  const legacyHeaderMatch = line.match(/^(#{3,4})\s+(.+)/)
                   const boldHeaderMatch = trimmed.startsWith('**') && trimmed.endsWith('**') && trimmed.length < 100
-                  const plainHeaderMatch = !headerMatch && !boldHeaderMatch && !trimmed.startsWith('- ') && !trimmed.match(/^\d+\.\s/) && trimmed.length < 80 && trimmed === trimmed.replace(/[:.?!]$/, '')
-
-                  if (headerMatch || boldHeaderMatch || plainHeaderMatch) {
-                    const level = headerMatch ? headerMatch[1].length : 3
-                    const title = headerMatch
-                      ? headerMatch[2].replace(/\*+/g, '').trim()
-                      : boldHeaderMatch
-                        ? trimmed.replace(/\*\*/g, '').trim()
-                        : trimmed
+                  const numberedHeaderMatch = trimmed.match(/^\d+\s+(.+)/)
+                  
+                  if (mainHeaderMatch || subHeaderMatch || legacyHeaderMatch || boldHeaderMatch || numberedHeaderMatch) {
+                    const level = mainHeaderMatch ? 3 : (subHeaderMatch ? 4 : (legacyHeaderMatch ? legacyHeaderMatch[1].length : 3))
+                    const title = mainHeaderMatch
+                      ? mainHeaderMatch[1].trim()
+                      : subHeaderMatch
+                        ? subHeaderMatch[1].trim()
+                        : legacyHeaderMatch
+                          ? legacyHeaderMatch[2].replace(/\*+/g, '').trim()
+                          : boldHeaderMatch
+                            ? trimmed.replace(/\*\*/g, '').trim()
+                            : numberedHeaderMatch
+                              ? numberedHeaderMatch[1].trim()
+                              : trimmed
                     const normalized = title.toLowerCase()
                     if (normalized && normalized === lastHeader) {
                       return
@@ -732,8 +757,11 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
                   }
                 })
 
+                let subHeaderIndex = 0
                 return sections.map((section, idx) => {
-                  const isMajor = section.level === 3 || section.title.toLowerCase().includes('summary') || section.title.toLowerCase().includes('overview')
+                  const titleLower = section.title.toLowerCase()
+                  const isMajor = section.level === 3 || titleLower.includes('summary') || titleLower.includes('overview')
+                  const tightenWidth = titleLower.includes('takeaway') || titleLower.includes('key topic')
 
                   if (isMajor) {
                     return (
@@ -747,10 +775,10 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
                           <div className="h-px flex-1 bg-gradient-to-l from-transparent to-primary/50" />
                         </div>
                         
-                        <div className="space-y-4 max-w-3xl mx-auto px-4">
+                        <div className={`space-y-4 ${tightenWidth ? 'max-w-2xl' : 'max-w-3xl'} mx-auto px-4`}>
                           {section.content.map((line, lIdx) => (
-                            <p key={lIdx} className="text-lg text-foreground leading-relaxed text-center">
-                              {line.split('**').map((part, i) => 
+                            <p key={lIdx} className={`text-[19.5px] text-foreground leading-relaxed ${tightenWidth ? 'text-left' : 'text-center'}`}>
+                              {line.split('**').map((part, i) =>
                                 i % 2 === 1 ? <strong key={i} className="text-foreground">{part}</strong> : part
                               )}
                             </p>
@@ -761,6 +789,7 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
                   }
 
                   // Sub-header as Collapsible Box (Accordion Style)
+                  subHeaderIndex++
                   return (
                     <div key={idx} className="max-w-4xl mx-auto px-4 mb-4">
                       <Collapsible className="group">
@@ -769,17 +798,22 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
                             <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-primary/10 text-primary group-data-[state=open]:rotate-180 transition-transform">
                               <ChevronDown className="h-4 w-4" />
                             </div>
-                            <span className="text-lg font-bold text-foreground">{section.title}</span>
+                            <span className="text-lg font-bold text-foreground">{subHeaderIndex}. {section.title}</span>
                           </div>
                         </CollapsibleTrigger>
                         <CollapsibleContent className="px-6 py-4 space-y-4 border-x border-b rounded-b-xl bg-card/30">
                           {section.content.map((line, lIdx) => {
                             const tLine = line.trim()
                             if (tLine.startsWith('- ')) {
+                              const content = tLine.replace(/^- /, '')
                               return (
                                 <div key={lIdx} className="flex gap-3 items-start text-lg text-foreground leading-relaxed">
                                   <div className="w-1.5 h-1.5 rounded-full bg-primary/40 mt-2 flex-shrink-0" />
-                                  <span>{tLine.replace(/^- /, '')}</span>
+                                  <span>
+                                    {content.split('**').map((part, i) =>
+                                      i % 2 === 1 ? <strong key={i} className="text-foreground">{part}</strong> : part
+                                    )}
+                                  </span>
                                 </div>
                               )
                             }
@@ -822,6 +856,8 @@ function ChatTab({ materialId, sourceType, topic, materialTitle }: {
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
   const [renameSessionInput, setRenameSessionInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
+  const lastUserMessageRef = useRef<HTMLDivElement | null>(null)
+  const shouldScrollToUserRef = useRef(false)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const isMounted = useRef(true)
 
@@ -861,6 +897,15 @@ function ChatTab({ materialId, sourceType, topic, materialTitle }: {
         setSessions(data)
         if (data.length > 0) {
           setCurrentSessionId(data[0].id)
+        } else {
+          try {
+            const newSession = await tutorAPI.createSession(materialId, 'Untitled Chat')
+            setSessions([newSession])
+            setCurrentSessionId(newSession.id)
+            setMessages([])
+          } catch {
+            // If auto-create fails, leave the empty state
+          }
         }
       } catch (err) {
         console.error('Failed to load sessions', err)
@@ -917,9 +962,16 @@ function ChatTab({ materialId, sourceType, topic, materialTitle }: {
     }
   }, [currentSessionId])
 
+  const scrollToLastUser = () => {
+    if (lastUserMessageRef.current) {
+      lastUserMessageRef.current.scrollIntoView({ block: 'start', behavior: 'auto' })
+    }
+  }
+
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    if (shouldScrollToUserRef.current) {
+      scrollToLastUser()
+      shouldScrollToUserRef.current = false
     }
   }, [messages])
 
@@ -989,6 +1041,7 @@ function ChatTab({ materialId, sourceType, topic, materialTitle }: {
     setIsLoading(true)
     localStorage.setItem(`waiting_chat_${sessionId}`, 'true')
     startChatPoller(sessionId) // Start polling in case we navigate away
+    shouldScrollToUserRef.current = true
 
     try {
       const data = await tutorAPI.ask(currentInput, sourceType, materialId, sessionId!)
@@ -1019,12 +1072,49 @@ function ChatTab({ materialId, sourceType, topic, materialTitle }: {
   const handleExportPDF = () => {
     if (messages.length === 0) return
     const currentTitle = sessions.find(s => s.id === currentSessionId)?.title || 'Chat'
-    const html = messages.map(m => `
+    const escapeHtml = (value: string) =>
+      value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+
+    const formatInline = (value: string) =>
+      escapeHtml(value).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+
+    const html = messages.map(m => {
+      const lines = m.content.split('\n')
+      const parts = lines.map((line) => {
+        const trimmed = line.trim()
+        if (!trimmed) return '<div style="height:6px"></div>'
+
+        const headerMatch = trimmed.match(/^(#{1,3})\s*(.+)$/)
+        if (headerMatch) {
+          const level = headerMatch[1].length
+          const text = formatInline(headerMatch[2])
+          if (level === 1) return `<h2 style="margin:12px 0 6px;font-size:18px;font-weight:700;">${text}</h2>`
+          if (level === 2) return `<h3 style="margin:10px 0 6px;font-size:16px;font-weight:700;">${text}</h3>`
+          return `<h4 style="margin:8px 0 4px;font-size:14px;font-weight:700;">${text}</h4>`
+        }
+
+        const bulletMatch = trimmed.match(/^[-*+]\s+(.*)$/)
+        if (bulletMatch) {
+          return `<div style="margin:4px 0 4px 16px;">• ${formatInline(bulletMatch[1])}</div>`
+        }
+
+        const numberMatch = trimmed.match(/^(\d+\.)\s+(.*)$/)
+        if (numberMatch) {
+          return `<div style="margin:4px 0 4px 16px;">${formatInline(numberMatch[1])} ${formatInline(numberMatch[2])}</div>`
+        }
+
+        return `<div style="margin:4px 0;">${formatInline(trimmed)}</div>`
+      }).join('')
+
+      return `
       <div class="chat-msg ${m.role === 'user' ? 'chat-user' : 'chat-ai'}">
         <span class="chat-role">${m.role}</span>
-        <div>${m.content.replace(/\n/g, '<br>')}</div>
+        <div>${parts}</div>
       </div>
-    `).join('')
+    `}).join('')
     printAsPDF(`Chat Session - ${currentTitle}`, html)
   }
 
@@ -1201,6 +1291,7 @@ function ChatTab({ materialId, sourceType, topic, materialTitle }: {
                     animate={{ opacity: 1, y: 0 }}
                     key={i}
                     className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    ref={m.role === 'user' ? lastUserMessageRef : undefined}
                   >
                     <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
                       m.role === 'user'
@@ -1208,9 +1299,9 @@ function ChatTab({ materialId, sourceType, topic, materialTitle }: {
                         : 'bg-card border border-border/50 text-foreground rounded-tl-none'
                     }`}>
                       {m.role === 'user' ? (
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                        <p className="text-[15.25px] leading-relaxed whitespace-pre-wrap">{m.content}</p>
                       ) : (
-                        <div className="text-sm leading-relaxed [&_strong]:font-semibold [&_li]:mb-1">
+                        <div className="text-[16.25px] leading-relaxed [&_strong]:font-semibold [&_li]:mb-1">
                           {renderMarkdown(m.content)}
                         </div>
                       )}
@@ -1264,10 +1355,26 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium')
   const [mcqCount, setMcqCount] = useState(3)
   const [tfCount, setTfCount] = useState(2)
+  const [mcqCountInput, setMcqCountInput] = useState('3')
+  const [tfCountInput, setTfCountInput] = useState('2')
   const [questions, setQuestions] = useState<QuizQuestion[]>([])
   const [quizId, setQuizId] = useState<string | null>(null)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [result, setResult] = useState<QuizResult | null>(null)
+
+  const clampCount = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
+  const stopQuizGenerating = () => {
+    setIsGenerating(false)
+    localStorage.removeItem(`generating_quiz_${materialId}`)
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current)
+      pollingRef.current = null
+    }
+  }
+
+  useEffect(() => { setMcqCountInput(String(mcqCount)) }, [mcqCount])
+  useEffect(() => { setTfCountInput(String(tfCount)) }, [tfCount])
 
   // ── Parse quiz data from backend format ──────────────
   const parseQuizData = (rawQuiz: any): QuizQuestion[] => {
@@ -1314,10 +1421,7 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
             const formatted = parseQuizData(rawQuiz)
             if (formatted.length > 0) setQuestions(formatted)
           }
-          setIsGenerating(false)
-          localStorage.removeItem(`generating_quiz_${materialId}`)
-          clearInterval(pollingRef.current!)
-          pollingRef.current = null
+          stopQuizGenerating()
         }
       } catch { }
     }, 5000)
@@ -1344,14 +1448,9 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
             const formatted = parseQuizData(rawQuiz)
             if (formatted.length > 0) setQuestions(formatted)
           }
-          
+
           if (wasGenerating) {
-            setIsGenerating(false)
-            localStorage.removeItem(`generating_quiz_${materialId}`)
-            if (pollingRef.current) {
-              clearInterval(pollingRef.current)
-              pollingRef.current = null
-            }
+            stopQuizGenerating()
           }
 
           try {
@@ -1394,6 +1493,7 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
         const formatted = parseQuizData(data.quiz)
         if (formatted.length > 0) {
           setQuestions(formatted)
+          stopQuizGenerating()
           toast.success('Quiz generated!')
         } else {
           throw new Error('No questions returned')
@@ -1403,12 +1503,7 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
       toast.error('Failed to generate quiz. Please try again.')
     } finally {
       if (isMounted.current) {
-        setIsGenerating(false)
-        localStorage.removeItem(`generating_quiz_${materialId}`)
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current)
-          pollingRef.current = null
-        }
+        if (questions.length === 0) stopQuizGenerating()
       }
     }
   }
@@ -1664,7 +1759,28 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
                   >
                     <Minus className="h-4 w-4" />
                   </Button>
-                  <span className="text-2xl font-bold w-12 text-center">{mcqCount}</span>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={15}
+                    value={mcqCountInput}
+                    onChange={(e) => {
+                      const next = e.target.value
+                      setMcqCountInput(next)
+                      if (!next.trim()) return
+                      const parsed = parseInt(next, 10)
+                      if (!Number.isNaN(parsed)) {
+                        setMcqCount(clampCount(parsed, 1, 15))
+                      }
+                    }}
+                    onBlur={() => {
+                      const parsed = parseInt(mcqCountInput, 10)
+                      const clamped = clampCount(Number.isNaN(parsed) ? 1 : parsed, 1, 15)
+                      setMcqCount(clamped)
+                      setMcqCountInput(String(clamped))
+                    }}
+                    className="text-2xl font-bold w-16 text-center h-10 px-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
                   <Button
                     variant="outline"
                     size="icon"
@@ -1693,7 +1809,28 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
                   >
                     <Minus className="h-4 w-4" />
                   </Button>
-                  <span className="text-2xl font-bold w-12 text-center">{tfCount}</span>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={tfCountInput}
+                    onChange={(e) => {
+                      const next = e.target.value
+                      setTfCountInput(next)
+                      if (!next.trim()) return
+                      const parsed = parseInt(next, 10)
+                      if (!Number.isNaN(parsed)) {
+                        setTfCount(clampCount(parsed, 1, 10))
+                      }
+                    }}
+                    onBlur={() => {
+                      const parsed = parseInt(tfCountInput, 10)
+                      const clamped = clampCount(Number.isNaN(parsed) ? 1 : parsed, 1, 10)
+                      setTfCount(clamped)
+                      setTfCountInput(String(clamped))
+                    }}
+                    className="text-2xl font-bold w-16 text-center h-10 px-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
                   <Button
                     variant="outline"
                     size="icon"
@@ -1720,7 +1857,7 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
             <div className="flex flex-col items-center gap-3 py-4 rounded-xl bg-primary/5 border border-primary/20">
               <Loader2 className="h-6 w-6 text-primary animate-spin" />
               <p className="text-sm text-muted-foreground text-center">
-                Generating your quiz… You can switch tabs — we'll keep working in the background.
+                Generating your quiz - This might take a while...
               </p>
             </div>
           )}

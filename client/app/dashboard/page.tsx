@@ -171,7 +171,7 @@ export default function DashboardPage() {
           setMaterials(parsed)
           setIsLoadingMaterials(false)
         }
-      } catch {}
+      } catch { }
     }
     loadMaterials()
   }, [token])
@@ -238,7 +238,7 @@ export default function DashboardPage() {
         if (localTitlesRef.current[tempId]) {
           localTitlesRef.current[result.material_id] = localTitlesRef.current[tempId]
           // Also rename on server since user renamed before upload finished
-          materialsAPI.rename(result.material_id, localTitlesRef.current[tempId]).catch(() => {})
+          materialsAPI.rename(result.material_id, localTitlesRef.current[tempId]).catch(() => { })
         }
         setMaterials(prev => prev.map(m => m.id === tempId ? newMat : m))
         setRenameTarget(prev => (prev?.id === tempId ? newMat : prev))
@@ -293,7 +293,7 @@ export default function DashboardPage() {
         tempToRealRef.current[tempId] = result.material_id
         if (localTitlesRef.current[tempId]) {
           localTitlesRef.current[result.material_id] = localTitlesRef.current[tempId]
-          materialsAPI.rename(result.material_id, localTitlesRef.current[tempId]).catch(() => {})
+          materialsAPI.rename(result.material_id, localTitlesRef.current[tempId]).catch(() => { })
         }
         setMaterials(prev => prev.map(m => m.id === tempId ? newMat : m))
         setRenameTarget(prev => (prev?.id === tempId ? newMat : prev))
@@ -369,7 +369,7 @@ export default function DashboardPage() {
       if (realIds.length > 0) {
         await materialsAPI.bulkDelete(realIds)
       }
-      
+
       const updated = materials.filter((m) => !selectedIds.includes(m.id))
       setMaterials(updated)
       localStorage.setItem('cached_materials', JSON.stringify(updated))
@@ -779,7 +779,7 @@ export default function DashboardPage() {
               </div>
               <DialogTitle className="text-2xl font-bold mb-2">Deleting Materials</DialogTitle>
               <DialogDescription className="text-base">
-                Please wait while we securely remove your data. 
+                Please wait while we securely remove your data.
                 <br /> This action cannot be undone.
               </DialogDescription>
               <div className="mt-8 flex items-center gap-2 text-sm text-muted-foreground bg-muted px-4 py-2 rounded-full">

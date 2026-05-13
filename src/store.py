@@ -125,7 +125,7 @@ def list_materials(user_id: str) -> list[dict]:
     client = _db()
     if client is not None:
         try:
-            result = client.table("materials").select("*").eq("user_id", user_id).order("created_at").execute()
+            result = _robust_execute(client.table("materials").select("*").eq("user_id", user_id).order("created_at"))
             return list(reversed(result.data))
         except Exception:
             pass
@@ -144,7 +144,7 @@ def create_material(user_id: str, source_type: str, title: str,
         data["file_path"] = file_path
     if url:
         data["url"] = url
-    result = _table_supabase("materials").insert(data).execute()
+    result = _robust_execute(_table_supabase("materials").insert(data))
     return result.data[0]
 
 
@@ -159,7 +159,7 @@ def update_material_status(material_id: str, status: str,
 def get_material(material_id: str) -> Optional[dict]:
     if material_id.startswith("temp-"):
         return None
-    result = _table_supabase("materials").select("*").eq("id", material_id).execute()
+    result = _robust_execute(_table_supabase("materials").select("*").eq("id", material_id))
     return result.data[0] if result.data else None
 
 
@@ -178,19 +178,19 @@ def delete_material(material_id: str):
     # Due to cascading or manual deletion, we delete child records first
     
     # chat_messages don't have material_id, so we must fetch session_ids first
-    sessions_res = _table_supabase("chat_sessions").select("id").eq("material_id", material_id).execute()
+    sessions_res = _robust_execute(_table_supabase("chat_sessions").select("id").eq("material_id", material_id))
     session_ids = [s["id"] for s in sessions_res.data] if sessions_res.data else []
 
     for sid in session_ids:
-        _table_supabase("chat_messages").delete().eq("session_id", sid).execute()
+        _robust_execute(_table_supabase("chat_messages").delete().eq("session_id", sid))
 
-    _table_supabase("chat_sessions").delete().eq("material_id", material_id).execute()
-    _table_supabase("summaries").delete().eq("material_id", material_id).execute()
-    _table_supabase("quizzes").delete().eq("material_id", material_id).execute()
+    _robust_execute(_table_supabase("chat_sessions").delete().eq("material_id", material_id))
+    _robust_execute(_table_supabase("summaries").delete().eq("material_id", material_id))
+    _robust_execute(_table_supabase("quizzes").delete().eq("material_id", material_id))
     # Delete embeddings before chunks (FK dependency)
-    _table_supabase("material_embeddings").delete().eq("material_id", material_id).execute()
-    _table_supabase("material_chunks").delete().eq("material_id", material_id).execute()
-    _table_supabase("materials").delete().eq("id", material_id).execute()
+    _robust_execute(_table_supabase("material_embeddings").delete().eq("material_id", material_id))
+    _robust_execute(_table_supabase("material_chunks").delete().eq("material_id", material_id))
+    _robust_execute(_table_supabase("materials").delete().eq("id", material_id))
 
 
 # ── Material Chunks ────────────────────────────────────
@@ -200,7 +200,7 @@ def save_chunks(material_id: str, chunks: list[str]) -> list[str]:
         {"material_id": material_id, "chunk_index": i, "content": c}
         for i, c in enumerate(chunks)
     ]
-    result = _table_supabase("material_chunks").insert(records).execute()
+    result = _robust_execute(_table_supabase("material_chunks").insert(records))
     return [r["id"] for r in result.data]
 
 
