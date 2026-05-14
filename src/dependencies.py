@@ -13,25 +13,17 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 async def get_current_user(
     token: Optional[str] = Depends(oauth2_scheme),
     x_auth_token: Optional[str] = Header(None),
-    x_user_id: Optional[str] = Header(None),
-    x_user_name: Optional[str] = Header(None),
-    x_user_email: Optional[str] = Header(None),
+    authorization: Optional[str] = Header(None),
 ) -> Any:
     auth_client = get_auth_supabase()
     client = get_supabase()
 
-    # 1. Fall back to x-user-id header first (High performance, used by frontend)
-    if x_user_id:
-        return {
-            "id": x_user_id,
-            "name": x_user_name,
-            "email": x_user_email,
-        }
+    supabase_token = x_auth_token
+    if not supabase_token and authorization:
+        supabase_token = authorization.replace("Bearer ", "").strip()
+    elif not supabase_token and token:
+        supabase_token = token
 
-    # 2. Extract the actual Supabase JWT
-    # Prefer X-Auth-Token, otherwise use token from Authorization header
-    supabase_token = x_auth_token or token
-    
     # If the token is a Hugging Face token (starts with hf_), ignore it for user auth
     if supabase_token and supabase_token.startswith("hf_"):
         supabase_token = None
@@ -54,10 +46,30 @@ async def get_current_user(
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
 
 
-async def get_current_user_id(current_user=Depends(get_current_user)) -> str:
-    user_id = getattr(current_user, "id", None)
-    if not user_id and isinstance(current_user, dict):
-        user_id = current_user.get("id")
-    if not user_id:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unauthorized")
-    return user_id
+async def get_current_user_id(
+    x_auth_token: Optional[str] = Header(None),
+    authorization: Optional[str] = Header(None),
+) -> str:
+    token = x_auth_token
+
+    if not token and authorization:
+        token = authorization.replace("Bearer ", "").strip()
+    
+    if token and token.startswith("hf_"):
+        token = None
+
+    client = get_supabase()
+    if client is None:
+        return DEV_USER_ID
+
+    if not token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+
+    try:
+        auth_client = get_auth_supabase()
+        supabase = auth_client if auth_client is not None else client
+        user = supabase.auth.get_user(token)
+        user_obj = getattr(user, "user", None) or user
+        return str(user_obj.id)
+    except Exception:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")

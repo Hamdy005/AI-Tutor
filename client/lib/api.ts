@@ -59,18 +59,6 @@ async function fetchAPI<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
-  const userStr = typeof window !== 'undefined' ? localStorage.getItem('auth_user') : null
-  let userId = ''
-  let userName = ''
-  let userEmail = ''
-  try {
-    if (userStr) {
-      const user = JSON.parse(userStr)
-      userId = user.id || ''
-      userName = user.name || ''
-      userEmail = user.email || ''
-    }
-  } catch {}
 
   const hfToken = process.env.NEXT_PUBLIC_HF_TOKEN
   
@@ -81,9 +69,6 @@ async function fetchAPI<T>(
     // User JWT goes in custom header if HF token is present, otherwise fallback to Authorization
     ...(!hfToken && token && { Authorization: `Bearer ${token}` }),
     ...(token && { 'X-Auth-Token': token }),
-    ...(userId && { 'X-User-Id': userId }),
-    ...(userName && { 'X-User-Name': userName }),
-    ...(userEmail && { 'X-User-Email': userEmail }),
     ...options.headers,
   }
 
@@ -127,11 +112,6 @@ export const materialsAPI = {
 
   uploadPDF: async (file: File): Promise<{ material_id: string; title: string; chunks_count: number }> => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
-    const userStr = typeof window !== 'undefined' ? localStorage.getItem('auth_user') : null
-    let userId = ''
-    try {
-      if (userStr) userId = JSON.parse(userStr).id || ''
-    } catch {}
     const hfToken = process.env.NEXT_PUBLIC_HF_TOKEN
     const formData = new FormData()
     formData.append('file', file)
@@ -142,7 +122,6 @@ export const materialsAPI = {
         ...(hfToken && { Authorization: `Bearer ${hfToken}` }),
         ...(!hfToken && token && { Authorization: `Bearer ${token}` }),
         ...(token && { 'X-Auth-Token': token }),
-        ...(userId && { 'X-User-Id': userId }),
       },
       body: formData,
     })

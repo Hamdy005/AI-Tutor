@@ -84,8 +84,8 @@ function renderMarkdown(text: string) {
       const content = trimmed.slice(2).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       elements.push(<li key={key++} className="ml-4 list-disc leading-relaxed" dangerouslySetInnerHTML={{ __html: content }} />)
     } else if (trimmed.match(/^\d+\.\s/)) {
-      // Remove the number AND any accidental bullets that follow it
-      const content = trimmed.replace(/^\d+\.\s*(?:[•\-\–\—\*\+]\s*)?/, '').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      // Remove the number AND any accidental bullets that follow it (ignore ** so we don't break bolding)
+      const content = trimmed.replace(/^\d+\.\s*(?:[•\-\–\—\+]\s*|\*(?!\*)\s*)?/, '').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       elements.push(<li key={key++} className="ml-4 list-decimal leading-relaxed" dangerouslySetInnerHTML={{ __html: content }} />)
     } else if (trimmed === '') {
       elements.push(<div key={key++} className="h-2" />)
@@ -617,8 +617,8 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
 
         // Numbered list (no bullet)
         if (trimmed.match(/^\d+\./)) {
-          // Clean any extra bullet right after the number
-          let content = trimmed.replace(/^(\d+\.)\s*[•\-\–\—\*\+]\s*/, '$1 ')
+          // Clean any extra bullet right after the number (ignore ** so we don't break bolding)
+          let content = trimmed.replace(/^(\d+\.)\s*(?:[•\-\–\—\+]\s*|\*(?!\*)\s*)/, '$1 ')
           if (content.includes('**')) {
             content = content.replace(/\*\*(.*?)\*\*/g, '<span class="topic-bold">$1</span>')
           }
