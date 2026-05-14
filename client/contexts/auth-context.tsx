@@ -2,12 +2,18 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
+import { authAPI } from '@/lib/api'
 
 export interface UserData {
   id: string
   name: string
   email: string
   avatar?: string
+  usage?: {
+    used: number
+    limit: number
+    remaining: number
+  }
 }
 
 interface AuthContextType {
@@ -53,18 +59,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const authToken = session.access_token
         setToken(authToken)
         localStorage.setItem('auth_token', authToken)
-        const updatedUser: UserData = {
-          id: sbUser.id,
-          name:
-            sbUser.user_metadata?.full_name ||
-            sbUser.user_metadata?.name ||
-            sbUser.email?.split('@')[0] ||
-            'User',
-          email: sbUser.email || '',
-          avatar: sbUser.user_metadata?.avatar_url,
+        
+        // Fetch full profile from our backend (includes custom name, avatar, and usage)
+        try {
+          const res = await authAPI.getProfile()
+          if (res.user && isActive) {
+            setUser(res.user)
+            localStorage.setItem('auth_user', JSON.stringify(res.user))
+          }
+        } catch (err) {
+          // If profile fetch fails, fallback to metadata as a temporary measure
+          const updatedUser: UserData = {
+            id: sbUser.id,
+            name:
+              sbUser.user_metadata?.full_name ||
+              sbUser.user_metadata?.name ||
+              sbUser.email?.split('@')[0] ||
+              'User',
+            email: sbUser.email || '',
+            avatar: sbUser.user_metadata?.avatar_url,
+          }
+          if (isActive) {
+            setUser(updatedUser)
+            localStorage.setItem('auth_user', JSON.stringify(updatedUser))
+          }
         }
-        setUser(updatedUser)
-        localStorage.setItem('auth_user', JSON.stringify(updatedUser))
       } catch {
         // supabase not available — nothing to sync
       }
@@ -78,18 +97,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const authToken = session.access_token
       setToken(authToken)
       localStorage.setItem('auth_token', authToken)
-      const updatedUser: UserData = {
-        id: sbUser.id,
-        name:
-          sbUser.user_metadata?.full_name ||
-          sbUser.user_metadata?.name ||
-          sbUser.email?.split('@')[0] ||
-          'User',
-        email: sbUser.email || '',
-        avatar: sbUser.user_metadata?.avatar_url,
-      }
-      setUser(updatedUser)
-      localStorage.setItem('auth_user', JSON.stringify(updatedUser))
+
+      // Fetch full profile from our backend on auth change
+      authAPI.getProfile().then(res => {
+        if (res.user) {
+          setUser(res.user)
+          localStorage.setItem('auth_user', JSON.stringify(res.user))
+        }
+      }).catch(() => {
+        const updatedUser: UserData = {
+          id: sbUser.id,
+          name:
+            sbUser.user_metadata?.full_name ||
+            sbUser.user_metadata?.name ||
+            sbUser.email?.split('@')[0] ||
+            'User',
+          email: sbUser.email || '',
+          avatar: sbUser.user_metadata?.avatar_url,
+        }
+        setUser(updatedUser)
+        localStorage.setItem('auth_user', JSON.stringify(updatedUser))
+      })
     })
 
     return () => {

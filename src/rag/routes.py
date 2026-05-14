@@ -44,13 +44,6 @@ async def ask_tutor(
     if not body.query.strip():
         raise HTTPException(400, "Query cannot be empty")
 
-    # Rate limit check
-    user_id = current_user.get("id") if isinstance(current_user, dict) else getattr(current_user, "id", None)
-    user_email = current_user.get("email") if isinstance(current_user, dict) else getattr(current_user, "email", None)
-    
-    if user_id and not check_and_increment_daily_limit(user_id, email=user_email, limit=10):
-        raise HTTPException(429, "Daily limit of 10 requests reached. Come back tomorrow!")
-
     # Determine memory key (prefer session_id for persistence)
     mem_key = body.session_id or body.memory_id
 

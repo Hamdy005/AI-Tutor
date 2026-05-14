@@ -32,7 +32,7 @@ export function UserDropdown() {
     try {
       logout()
       toast.success('Signed out successfully')
-      router.push('/login')
+      router.push('/')
     } catch {
       toast.error('Failed to sign out')
     }

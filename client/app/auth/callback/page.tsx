@@ -17,7 +17,7 @@ export default function AuthCallbackPage() {
 
       if (error || !data.session) {
         console.error('OAuth callback error:', error)
-        router.replace('/login?error=oauth_failed')
+        router.replace('/?error=oauth_failed')
         return
       }
 

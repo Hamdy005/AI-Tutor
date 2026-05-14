@@ -2,7 +2,7 @@ import logging
 import logging.handlers
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
@@ -13,7 +13,7 @@ from src.quiz_generator.routes import router as quiz_router
 from src.auth.routes import router as auth_router
 from src.store import get_usage
 from src.dependencies import get_current_user_id
-from src.config import settings
+from src.config import settings 
 
 # ── Logging Setup ──────────────────────────────────────
 os.makedirs("logs", exist_ok=True)

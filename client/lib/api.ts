@@ -103,6 +103,20 @@ export const authAPI = {
       method: 'POST',
       body: JSON.stringify({ token }),
     }),
+
+  deleteAccount: () =>
+    fetchAPI<{ status: string; message: string }>('/api/auth/me', {
+      method: 'DELETE',
+    }),
+
+  getProfile: () =>
+    fetchAPI<{ status: string; user: User }>('/api/auth/profile'),
+
+  updateProfile: (data: { name?: string; avatar_url?: string }) =>
+    fetchAPI<{ status: string; user: User }>('/api/auth/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
 }
 
 export const materialsAPI = {

@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  GraduationCap,
   Plus,
   FileText,
   Link as LinkIcon,
@@ -20,8 +19,9 @@ import {
   Pencil,
   Trash2,
   Search,
-  X,
+  X
 } from 'lucide-react'
+import { Logo } from '@/components/logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -54,6 +54,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 import { UserDropdown } from '@/components/user-dropdown'
+import { UsageStats } from '@/components/usage-stats'
 import { useAuth } from '@/contexts/auth-context'
 import { materialsAPI } from '@/lib/api'
 import type { Material } from '@/lib/api'
@@ -508,12 +509,10 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <Link href="/dashboard" className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                <GraduationCap className="w-5 h-5 text-primary" />
-              </div>
-              <span className="text-xl font-bold text-foreground">Study Mate</span>
+              <Logo />
             </Link>
             <div className="flex items-center gap-3">
+              <UsageStats />
               <span className="text-sm text-muted-foreground hidden sm:block">
                 {user?.name || 'User'}
               </span>
@@ -643,7 +642,7 @@ export default function DashboardPage() {
                           onChange={(e) => setTopicInput(e.target.value)}
                         />
                         <p className="text-xs text-muted-foreground">
-                          Study Mate will use AI to generate summaries, quizzes, and answer questions about this topic.
+                          Study Buddy will use AI to generate summaries, quizzes, and answer questions about this topic.
                         </p>
                       </div>
                       <Button

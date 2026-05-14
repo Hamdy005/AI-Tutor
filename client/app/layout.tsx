@@ -9,7 +9,7 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Study Mate - Learn Smarter with AI',
+  title: 'Study Buddy - Learn Smarter with AI',
   description: 'Your personal AI-powered learning assistant. Upload materials, get summaries, chat with AI, and generate quizzes.',
   generator: 'v0.app',
   icons: {

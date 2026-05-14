@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import {
-  GraduationCap,
   ArrowLeft,
   Camera,
   User,
@@ -15,6 +14,7 @@ import {
   Sun,
   Monitor,
 } from 'lucide-react'
+import { Logo } from '@/components/logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,13 +23,27 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { UserDropdown } from '@/components/user-dropdown'
+import { UsageStats } from '@/components/usage-stats'
 import { useAuth } from '@/contexts/auth-context'
+import { authAPI } from '@/lib/api'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 
 export default function ProfilePage() {
   const router = useRouter()
-  const { user, updateUser } = useAuth()
+  const { user, updateUser, logout } = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
   const [formData, setFormData] = useState({
     name: user?.name || '',
@@ -47,11 +61,20 @@ export default function ProfilePage() {
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      updateUser({ name: formData.name, email: formData.email, avatar: formData.avatar || undefined })
+      const res = await authAPI.updateProfile({
+        name: formData.name,
+        avatar_url: formData.avatar
+      })
+      
+      // Update local context with data from server
+      updateUser({
+        name: res.user.name,
+        avatar: res.user.avatar
+      })
+      
       toast.success('Profile updated successfully!')
-    } catch {
-      toast.error('Failed to update profile')
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update profile')
     } finally {
       setIsSaving(false)
     }
@@ -86,18 +109,32 @@ export default function ProfilePage() {
     toast.success(`Theme changed to ${newTheme}`)
   }
 
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true)
+    try {
+      await authAPI.deleteAccount()
+      toast.success('Account deleted successfully')
+      logout()
+      router.push('/')
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete account')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <nav className="border-b border-border/50 bg-card/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <Link href="/dashboard" className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                <GraduationCap className="w-5 h-5 text-primary" />
-              </div>
-              <span className="text-xl font-bold text-foreground">Study Mate</span>
+              <Logo />
             </Link>
-            <UserDropdown />
+            <div className="flex items-center gap-3">
+              <UsageStats />
+              <UserDropdown />
+            </div>
           </div>
         </div>
       </nav>
@@ -189,9 +226,9 @@ export default function ProfilePage() {
                       id="email"
                       type="email"
                       value={formData.email}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
-                      className="pl-10"
-                      disabled={isSaving}
+                      className="pl-10 bg-muted/50 cursor-not-allowed"
+                      readOnly
+                      disabled
                     />
                   </div>
                 </div>
@@ -210,7 +247,7 @@ export default function ProfilePage() {
           <Card>
             <CardHeader>
               <CardTitle>Appearance</CardTitle>
-              <CardDescription>Customize how Study Mate looks on your device</CardDescription>
+              <CardDescription>Customize how Study Buddy looks on your device</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
@@ -236,9 +273,35 @@ export default function ProfilePage() {
               <CardDescription>Irreversible and destructive actions</CardDescription>
             </CardHeader>
             <CardContent>
-              <Button variant="destructive" onClick={() => toast.error('This action is disabled in demo mode')}>
-                Delete Account
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" disabled={isDeleting}>
+                    {isDeleting ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Deleting...</>
+                    ) : (
+                      'Delete Account'
+                    )}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This action cannot be undone. This will permanently delete your account
+                      and remove all your materials, summaries, and quizzes from our servers.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleDeleteAccount}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Delete Account
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </CardContent>
           </Card>
         </motion.div>

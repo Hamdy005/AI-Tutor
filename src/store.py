@@ -318,11 +318,18 @@ def get_quizzes(material_id: Optional[str] = None, user_id: Optional[str] = None
 # ── Users (maps to Supabase `profiles` table) ─────────
 
 def _map_profile(profile: dict) -> dict:
+    today = date.today().isoformat()
+    used = profile.get("daily_requests", 0) if profile.get("last_request_date") == today else 0
     return {
         "id": profile["id"],
         "name": profile.get("display_name", ""),
         "email": profile.get("email", ""),
-        "avatar_url": profile.get("avatar_url", ""),
+        "avatar": profile.get("avatar_url", ""),
+        "usage": {
+            "used": used,
+            "limit": 10,
+            "remaining": max(0, 10 - used)
+        }
     }
 
 
@@ -365,6 +372,38 @@ def get_user_by_id(user_id: str) -> Optional[dict]:
     if result.data:
         return _map_profile(result.data[0])
     return None
+
+
+def update_user_profile(user_id: str, name: Optional[str] = None, avatar_url: Optional[str] = None) -> dict:
+    """
+    Updates the user profile in the database.
+    """
+    data = {}
+    if name is not None:
+        data["display_name"] = name
+    if avatar_url is not None:
+        data["avatar_url"] = avatar_url
+    
+    if not data:
+        user = get_user_by_id(user_id)
+        if not user:
+            raise ValueError("User not found")
+        return user
+
+    try:
+        result = _robust_execute(_table_supabase("profiles").update(data).eq("id", user_id))
+        if result.data:
+            return _map_profile(result.data[0])
+    except Exception:
+        pass
+    
+    # Fake fallback
+    store = _in_memory.get("profiles", {})
+    if user_id in store:
+        store[user_id].update(data)
+        return _map_profile(store[user_id])
+    
+    raise ValueError("User not found")
 
 
 # ── Chat Messages (persistent) ──────────────────────────
@@ -610,3 +649,20 @@ def get_usage(user_id: str) -> dict:
         }
     except Exception:
         return {"used": 0, "limit": 10, "remaining": 10}
+
+
+def delete_user_data(user_id: str):
+    """
+    Deletes all data associated with a user.
+    """
+    # 1. Get all materials for this user and delete them one by one to ensure cascading deletes
+    materials_res = _robust_execute(_table_supabase("materials").select("id").eq("user_id", user_id))
+    material_ids = [m["id"] for m in materials_res.data] if materials_res.data else []
+    for mid in material_ids:
+        delete_material(mid)
+    
+    # 2. Delete any quizzes that might not be tied to a specific material
+    _robust_execute(_table_supabase("quizzes").delete().eq("user_id", user_id))
+    
+    # 3. Delete the user profile
+    _robust_execute(_table_supabase("profiles").delete().eq("id", user_id))
