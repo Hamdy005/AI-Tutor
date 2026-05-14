@@ -2,7 +2,7 @@ import time
 import asyncio
 import logging
 import validators
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks, Header
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks, Header, Request
 from pydantic import BaseModel
 from postgrest.exceptions import APIError
 
@@ -243,18 +243,27 @@ class SearchRequest(BaseModel):
 
 @router.post("/search")
 async def search_materials(
+    request: Request,
     body: SearchRequest,
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id),
 ):
+    # Debug logs
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    logger.info(f"[search] user_id={user_id}")
+    logger.info(f"[search] x-auth-token present: {'x-auth-token' in headers}")
+    logger.info(f"[search] authorization present: {'authorization' in headers}")
+    logger.info(f"[search] query={body.q}")
+
     supabase = get_supabase()
     if not supabase:
-         return {"results": []}
-         
+        return {"results": []}
+
     result = supabase.rpc(
         "search_materials_by_title",
         {"p_query": body.q, "p_user_id": user_id}
     ).execute()
 
+    logger.info(f"[search] RPC returned {len(result.data)} results: {result.data}")
     return {"results": result.data}
     
 @router.delete("/{material_id}")
