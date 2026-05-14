@@ -73,11 +73,14 @@ async function fetchAPI<T>(
   } catch {}
 
   const hfToken = process.env.NEXT_PUBLIC_HF_TOKEN
-  const authHeader = hfToken ? `Bearer ${hfToken}` : (token ? `Bearer ${token}` : null)
-
+  
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    ...(authHeader && { Authorization: authHeader }),
+    // HF token for private space access goes in standard Authorization header
+    ...(hfToken && { Authorization: `Bearer ${hfToken}` }),
+    // User JWT goes in custom header if HF token is present, otherwise fallback to Authorization
+    ...(!hfToken && token && { Authorization: `Bearer ${token}` }),
+    ...(token && { 'X-Auth-Token': token }),
     ...(userId && { 'X-User-Id': userId }),
     ...(userName && { 'X-User-Name': userName }),
     ...(userEmail && { 'X-User-Email': userEmail }),
@@ -129,13 +132,16 @@ export const materialsAPI = {
     try {
       if (userStr) userId = JSON.parse(userStr).id || ''
     } catch {}
+    const hfToken = process.env.NEXT_PUBLIC_HF_TOKEN
     const formData = new FormData()
     formData.append('file', file)
 
     const response = await fetch(`${API_BASE_URL}/api/materials/upload-pdf`, {
       method: 'POST',
       headers: {
-        ...(token && { Authorization: `Bearer ${token}` }),
+        ...(hfToken && { Authorization: `Bearer ${hfToken}` }),
+        ...(!hfToken && token && { Authorization: `Bearer ${token}` }),
+        ...(token && { 'X-Auth-Token': token }),
         ...(userId && { 'X-User-Id': userId }),
       },
       body: formData,

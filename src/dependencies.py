@@ -12,22 +12,13 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 async def get_current_user(
     token: Optional[str] = Depends(oauth2_scheme),
+    x_auth_token: Optional[str] = Header(None),
     x_user_id: Optional[str] = Header(None),
     x_user_name: Optional[str] = Header(None),
     x_user_email: Optional[str] = Header(None),
 ) -> Any:
     auth_client = get_auth_supabase()
     client = get_supabase()
-
-    # Dev mode: no Supabase configured
-    if client is None:
-        if x_user_id:
-            return {
-                "id": x_user_id,
-                "name": x_user_name or "User",
-                "email": x_user_email or f"user{x_user_id}@studymate.ai",
-            }
-        return DEV_USER
 
     # 1. Fall back to x-user-id header first (High performance, used by frontend)
     if x_user_id:
@@ -37,23 +28,29 @@ async def get_current_user(
             "email": x_user_email,
         }
 
-    # 2. If no header, and a Bearer token is present, verify it with Supabase
-    if token:
+    # 2. Extract the actual Supabase JWT
+    # Prefer X-Auth-Token, otherwise use token from Authorization header
+    supabase_token = x_auth_token or token
+    
+    # If the token is a Hugging Face token (starts with hf_), ignore it for user auth
+    if supabase_token and supabase_token.startswith("hf_"):
+        supabase_token = None
+
+    # Dev mode: no Supabase configured
+    if client is None:
+        return DEV_USER
+
+    # 3. Verify the token with Supabase
+    if supabase_token:
         try:
             verify_client = auth_client if auth_client is not None else client
-            response = verify_client.auth.get_user(token)
+            response = verify_client.auth.get_user(supabase_token)
             user = getattr(response, "user", None) or response
             if user:
                 return user
         except Exception:
             pass
 
-    # 3. Last resort: default dev user if everything is missing
-    if client is None:
-        return DEV_USER
-
-    if token:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication")
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
 
 
