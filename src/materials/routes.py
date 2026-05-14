@@ -238,52 +238,24 @@ async def create_topic(
     return {"material_id": mat["id"], "title": mat["title"]}
 
 
-class SearchQuery(BaseModel):
+class SearchRequest(BaseModel):
     q: str
 
 @router.post("/search")
 async def search_materials(
-    body: SearchQuery,
-    authorization: str = Header(None),
+    body: SearchRequest,
+    user_id: str = Depends(get_current_user_id)
 ):
-    if not body.q.strip():
-        return {"results": []}
+    supabase = get_supabase()
+    if not supabase:
+         return {"results": []}
+         
+    result = supabase.rpc(
+        "search_materials_by_title",
+        {"p_query": body.q, "p_user_id": user_id}
+    ).execute()
 
-    anon_client = get_auth_supabase()
-    if anon_client is None:
-        return {"results": []}
-
-    if not authorization:
-        raise HTTPException(401, "Missing authorization token")
-
-    token = authorization.strip()
-    if token.lower().startswith("bearer "):
-        token = token[7:].strip()
-    if not token:
-        raise HTTPException(401, "Missing authorization token")
-
-    anon_client.postgrest.auth(token)
-
-    try:
-        result = anon_client.rpc(
-            "search_materials_by_title",
-            {"p_query": body.q.strip()},
-        ).execute()
-    except APIError as e:
-        payload = e.args[0] if e.args else None
-        message = None
-        code = None
-        status = getattr(e, "status_code", None)
-        if isinstance(payload, dict):
-            message = payload.get("message")
-            code = payload.get("code")
-            status = payload.get("status") or status
-        message_text = (message or str(e) or "").lower()
-        if status == 401 or code == "PGRST303" or "jwt expired" in message_text or "unauthorized" in message_text:
-            raise HTTPException(401, "Session expired. Please sign in again.")
-        raise HTTPException(500, f"Search failed: {message or 'Unknown error'}")
-
-    return {"results": [row["material_id"] for row in (result.data or [])]}
+    return {"results": result.data}
     
 @router.delete("/{material_id}")
 async def delete_material_endpoint(
