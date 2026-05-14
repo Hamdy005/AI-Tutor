@@ -59,6 +59,17 @@ export default function ProfilePage() {
     avatar: user?.avatar || '',
   })
 
+  // Sync formData with user context if it updates (e.g. after syncSupabaseSession completes)
+  useEffect(() => {
+    if (user) {
+      setFormData(prev => ({
+        name: user.name || prev.name,
+        email: user.email || prev.email,
+        avatar: user.avatar || prev.avatar,
+      }))
+    }
+  }, [user])
+
   const initials = formData.name
     .split(' ')
     .map((n) => n[0])
@@ -74,10 +85,10 @@ export default function ProfilePage() {
         avatar_url: formData.avatar
       })
       
-      // Update local context with data from server
+      // Update local context with data from server or fallback to what we just saved
       updateUser({
-        name: res.user.name,
-        avatar: res.user.avatar
+        name: res.user?.name || formData.name,
+        avatar: res.user?.avatar || formData.avatar
       })
       
       toast.success('Profile updated successfully!')

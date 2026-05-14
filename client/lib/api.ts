@@ -72,9 +72,12 @@ async function fetchAPI<T>(
     }
   } catch {}
 
+  const hfToken = process.env.NEXT_PUBLIC_HF_TOKEN
+  const authHeader = hfToken ? `Bearer ${hfToken}` : (token ? `Bearer ${token}` : null)
+
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    ...(token && { Authorization: `Bearer ${token}` }),
+    ...(authHeader && { Authorization: authHeader }),
     ...(userId && { 'X-User-Id': userId }),
     ...(userName && { 'X-User-Name': userName }),
     ...(userEmail && { 'X-User-Email': userEmail }),
