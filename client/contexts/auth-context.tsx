@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import { useTheme } from 'next-themes'
 import { supabase } from '@/lib/supabase'
 import { authAPI } from '@/lib/api'
 
@@ -9,6 +10,7 @@ export interface UserData {
   name: string
   email: string
   avatar?: string
+  theme?: 'light' | 'dark' | 'system'
   usage?: {
     used: number
     limit: number
@@ -31,6 +33,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserData | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const { setTheme } = useTheme()
+
+  useEffect(() => {
+    if (user?.theme) {
+      setTheme(user.theme)
+    }
+  }, [user?.theme, setTheme])
 
   useEffect(() => {
     const storedToken = localStorage.getItem('auth_token')

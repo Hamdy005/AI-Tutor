@@ -1,5 +1,6 @@
 import os
 from typing import Optional
+import logging
 from datetime import datetime, timezone, date
 from langchain.memory import ConversationBufferMemory, ConversationBufferWindowMemory
 from src.database import get_supabase
@@ -18,6 +19,9 @@ ADMIN_EMAILS = set(
     for email in os.environ.get("ADMIN_EMAILS", "").split(",")
     if email.strip()
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def _get_next_id() -> str:
@@ -43,6 +47,7 @@ class _FakeTable:
         self._eq_field: str | None = None
         self._eq_value = None
         self._update_data: dict | None = None
+        self._single = False
 
     def insert(self, data):
         if isinstance(data, list):
@@ -68,10 +73,8 @@ class _FakeTable:
         return self
 
     def maybe_single(self):
-        records = list(_in_memory.get(self.name, {}).values())
-        if self._eq_field:
-            records = [r for r in records if r.get(self._eq_field) == self._eq_value]
-        return self._make_response(records[0] if records else None)
+        self._single = True
+        return self
 
     def update(self, data):
         self._update_data = data
@@ -98,13 +101,20 @@ class _FakeTable:
         if self._update_data is not None:
             for r in records:
                 r.update(self._update_data)
-        return self._make_response(records)
+        
+        if self._single:
+            data = records[0] if records else None
+        else:
+            data = records
+            
+        return self._make_response(data)
 
     def _make_response(self, data):
         class R:
-            pass
+            def execute(self):
+                return self
         r = R()
-        r.data = data if isinstance(data, list) else ([data] if data else [])
+        r.data = data
         return r
 
 
@@ -171,6 +181,23 @@ def create_material(user_id: str, source_type: str, title: str,
                     url: Optional[str] = None,
                     topic: Optional[str] = None) -> dict:
     now = datetime.now(timezone.utc).isoformat()
+    
+    # Ensure profile exists to avoid foreign key violations (Key (user_id) not present in table "profiles")
+    try:
+        # We use a direct check to avoid circular imports or complex logic
+        client = _db()
+        if client:
+            res = client.table("profiles").select("id").eq("id", user_id).execute()
+            if not res.data:
+                # Create a minimal profile if missing
+                client.table("profiles").insert({
+                    "id": user_id,
+                    "display_name": f"User_{user_id[:8]}",
+                    "email": f"{user_id}@placeholder.ai"
+                }).execute()
+    except Exception as e:
+        logger.error(f"Failed to ensure profile for user {user_id}: {e}")
+
     data = {"user_id": user_id, "source_type": source_type, "title": title, "status": "pending",
             "created_at": now, "updated_at": now}
     if file_path:
@@ -325,6 +352,7 @@ def _map_profile(profile: dict) -> dict:
         "name": profile.get("display_name", ""),
         "email": profile.get("email", ""),
         "avatar": profile.get("avatar_url", ""),
+        "theme": profile.get("theme", "system"),
         "usage": {
             "used": used,
             "limit": 10,
@@ -333,28 +361,34 @@ def _map_profile(profile: dict) -> dict:
     }
 
 
-def create_user(name: str, email: str, password: str) -> dict:
+def create_user(name: str, email: str, password: str, user_id: Optional[str] = None) -> dict:
     existing = get_user_by_email(email)
     if existing:
-        raise ValueError("Email already registered")
+        return existing
+    
     data = {"display_name": name, "email": email}
+    if user_id:
+        data["id"] = user_id
+        
     try:
         result = _table_supabase("profiles").insert(data).execute()
-        return _map_profile(result.data[0])
+        # insert().execute().data is always a list
+        return _map_profile(result.data[0] if isinstance(result.data, list) and result.data else result.data)
     except Exception:
         result = _FakeTable("profiles").insert(data).execute()
-        return _map_profile(result.data[0])
+        return _map_profile(result.data[0] if isinstance(result.data, list) and result.data else result.data)
 
 
 def get_user_by_email(email: str) -> Optional[dict]:
     try:
-        result = _table_supabase("profiles").select("*").eq("email", email).maybe_single().execute()
+        # Standard select instead of maybe_single to be more robust against 406 errors
+        result = _table_supabase("profiles").select("*").eq("email", email).execute()
         if result.data:
             return _map_profile(result.data[0])
     except Exception:
         pass
     fake = _FakeTable("profiles")
-    result = fake.select("*").eq("email", email).maybe_single().execute()
+    result = fake.select("*").eq("email", email).execute()
     if result.data:
         return _map_profile(result.data[0])
     return None
@@ -362,19 +396,20 @@ def get_user_by_email(email: str) -> Optional[dict]:
 
 def get_user_by_id(user_id: str) -> Optional[dict]:
     try:
-        result = _table_supabase("profiles").select("*").eq("id", user_id).maybe_single().execute()
+        # Standard select instead of maybe_single to be more robust against 406 errors
+        result = _table_supabase("profiles").select("*").eq("id", user_id).execute()
         if result.data:
             return _map_profile(result.data[0])
     except Exception:
         pass
     fake = _FakeTable("profiles")
-    result = fake.select("*").eq("id", user_id).maybe_single().execute()
+    result = fake.select("*").eq("id", user_id).execute()
     if result.data:
         return _map_profile(result.data[0])
     return None
 
 
-def update_user_profile(user_id: str, name: Optional[str] = None, avatar_url: Optional[str] = None) -> dict:
+def update_user_profile(user_id: str, name: Optional[str] = None, avatar_url: Optional[str] = None, theme: Optional[str] = None) -> dict:
     """
     Updates the user profile in the database.
     """
@@ -383,6 +418,8 @@ def update_user_profile(user_id: str, name: Optional[str] = None, avatar_url: Op
         data["display_name"] = name
     if avatar_url is not None:
         data["avatar_url"] = avatar_url
+    if theme is not None:
+        data["theme"] = theme
     
     if not data:
         user = get_user_by_id(user_id)
@@ -429,7 +466,7 @@ def get_chat_messages(material_id: str) -> list[dict]:
         _table_supabase("chat_messages")
         .select("*")
         .eq("material_id", material_id)
-        .maybe_single()
+        
         .execute()
     )
     if isinstance(result.data, list):
@@ -492,7 +529,7 @@ def list_chat_sessions(material_id: str, user_id: str) -> list[dict]:
 
 
 def get_chat_session(session_id: str) -> Optional[dict]:
-    result = _table_supabase("chat_sessions").select("*").eq("id", session_id).maybe_single().execute()
+    result = _table_supabase("chat_sessions").select("*").eq("id", session_id).execute()
     if isinstance(result.data, list):
         return result.data[0] if result.data else None
     return result.data or None
@@ -582,7 +619,7 @@ def check_and_increment_daily_limit(user_id: str, email: Optional[str] = None, l
             _table_supabase("profiles")
             .select("daily_requests, last_request_date")
             .eq("id", user_id)
-            .maybe_single()
+            
         )
         
         # If no profile or data, allow (or we could create one, but usually it exists)
@@ -590,7 +627,7 @@ def check_and_increment_daily_limit(user_id: str, email: Optional[str] = None, l
             return True
         
         # Handle both single object or list response from maybe_single/execute
-        profile = result.data[0] if isinstance(result.data, list) and result.data else result.data
+        profile = result.data[0] if result.data else None
         if not profile:
             return True
 
@@ -632,12 +669,11 @@ def get_usage(user_id: str) -> dict:
             _table_supabase("profiles")
             .select("daily_requests, last_request_date")
             .eq("id", user_id)
-            .maybe_single()
         )
         if not result.data:
             return {"used": 0, "limit": 10, "remaining": 10}
 
-        profile = result.data[0] if isinstance(result.data, list) and result.data else result.data
+        profile = result.data[0]
         if not profile:
             return {"used": 0, "limit": 10, "remaining": 10}
 

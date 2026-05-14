@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useTheme } from 'next-themes'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
@@ -41,10 +42,17 @@ import {
 export default function ProfilePage() {
   const router = useRouter()
   const { user, updateUser, logout } = useAuth()
+  const { theme, setTheme: setNextTheme } = useTheme()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
+
+  // Initialize theme from user profile
+  useEffect(() => {
+    if (user?.theme) {
+      setNextTheme(user.theme)
+    }
+  }, [user?.theme, setNextTheme])
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -92,21 +100,18 @@ export default function ProfilePage() {
     }
   }
 
-  const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
-    setTheme(newTheme)
-    if (newTheme === 'dark') {
-      document.documentElement.classList.add('dark')
-    } else if (newTheme === 'light') {
-      document.documentElement.classList.remove('dark')
-    } else {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      if (prefersDark) {
-        document.documentElement.classList.add('dark')
-      } else {
-        document.documentElement.classList.remove('dark')
-      }
+  const handleThemeChange = async (newTheme: 'light' | 'dark' | 'system') => {
+    setNextTheme(newTheme)
+    try {
+      // Save theme to DB
+      await authAPI.updateProfile({ theme: newTheme })
+      // Update local context
+      updateUser({ theme: newTheme })
+      toast.success(`Theme changed to ${newTheme}`)
+    } catch (err) {
+      console.error('Failed to save theme preference:', err)
+      toast.error('Failed to save theme preference')
     }
-    toast.success(`Theme changed to ${newTheme}`)
   }
 
   const handleDeleteAccount = async () => {

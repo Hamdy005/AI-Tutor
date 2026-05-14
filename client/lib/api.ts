@@ -61,14 +61,23 @@ async function fetchAPI<T>(
   const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
   const userStr = typeof window !== 'undefined' ? localStorage.getItem('auth_user') : null
   let userId = ''
+  let userName = ''
+  let userEmail = ''
   try {
-    if (userStr) userId = JSON.parse(userStr).id || ''
+    if (userStr) {
+      const user = JSON.parse(userStr)
+      userId = user.id || ''
+      userName = user.name || ''
+      userEmail = user.email || ''
+    }
   } catch {}
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...(token && { Authorization: `Bearer ${token}` }),
     ...(userId && { 'X-User-Id': userId }),
+    ...(userName && { 'X-User-Name': userName }),
+    ...(userEmail && { 'X-User-Email': userEmail }),
     ...options.headers,
   }
 

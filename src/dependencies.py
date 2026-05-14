@@ -33,8 +33,8 @@ async def get_current_user(
     if x_user_id:
         return {
             "id": x_user_id,
-            "name": x_user_name or "User",
-            "email": x_user_email or f"user{x_user_id}@studymate.ai",
+            "name": x_user_name,
+            "email": x_user_email,
         }
 
     # 2. If no header, and a Bearer token is present, verify it with Supabase
