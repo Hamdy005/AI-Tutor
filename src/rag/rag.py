@@ -123,6 +123,7 @@ def similarity_search(query: str, material_id: str, k: int = 5) -> list[dict]:
 def get_llm():
     if not os.environ.get("OPENROUTER_API_KEY"):
         raise ValueError("OPENROUTER_API_KEY not found. Please set it in config.env.")
+    logger.info(f"Initializing LLM with model: {settings.model_name}")
     return ChatOpenAI(
         model=settings.model_name,
         base_url=settings.openrouter_base_url,

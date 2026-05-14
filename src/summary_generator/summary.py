@@ -1,7 +1,9 @@
 import re
+import logging
 from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
 from src.rag.rag import get_llm
+
+logger = logging.getLogger(__name__)
 
 
 def summarizer_prompt():
@@ -66,8 +68,19 @@ def clean_summary(text: str) -> str:
 
 
 def summarizer(text: str) -> str:
-    prompt = summarizer_prompt()
-    llm = get_llm()
-    chain = LLMChain(llm=llm, prompt=prompt, verbose=False)
-    raw = chain.run(input=text)
-    return clean_summary(raw)
+    logger.info(f"Summarizer started for text of length {len(text)}")
+    try:
+        prompt = summarizer_prompt()
+        llm = get_llm()
+        # Modern LCEL syntax
+        chain = prompt | llm
+        response = chain.invoke({"input": text})
+        
+        raw_content = response.content
+        logger.info(f"Summarizer received response of length {len(raw_content)}")
+        logger.debug(f"Raw summary response: {raw_content[:500]}...")
+        
+        return clean_summary(raw_content)
+    except Exception as e:
+        logger.error(f"Summarizer failed: {str(e)}", exc_info=True)
+        raise
