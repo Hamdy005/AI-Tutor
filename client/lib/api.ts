@@ -1,4 +1,4 @@
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || ''
+export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '')
 
 export interface User {
   id: string
@@ -95,18 +95,6 @@ async function fetchAPI<T>(
 }
 
 export const authAPI = {
-  login: (email: string, password: string) =>
-    fetchAPI<{ token: string; user: User }>('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    }),
-
-  signup: (name: string, email: string, password: string) =>
-    fetchAPI<{ token: string; user: User }>('/api/auth/signup', {
-      method: 'POST',
-      body: JSON.stringify({ name, email, password }),
-    }),
-
   googleAuth: (token: string) =>
     fetchAPI<{ token: string; user: User }>('/api/auth/google', {
       method: 'POST',
