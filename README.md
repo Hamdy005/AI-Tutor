@@ -1,123 +1,121 @@
-# 🎓 AI Tutor for Students (Hybrid RAG)
+# 🎓 Study Mate
 
-AI Tutor is an interactive learning assistant built with Streamlit.  
-It summarizes study materials, answers questions like a personal tutor, and generates quizzes (MCQ + True/False) with explanations.
+AI Tutor is an interactive learning assistant — upload your study materials and get structured summaries, AI-powered chat, and custom quizzes.
 
-## 📚 Supported Sources
+---
 
-- PDF files
-- Website articles
-- Web search
-- Hybrid RAG system for accuracy (material + online sources)
+## 🏗️ Architecture Overview
 
-## 🔐 Requirements (Before Running)
+### 🌐 Frontend — Next.js
 
-| API | Purpose | Required? | Link | Free Trial |
-|-----|---------|-----------|------|------------|
-| OpenRouter API Key | LLM for answers, summaries, quizzes | ✅ Yes | [OpenRouter](https://openrouter.ai/keys) | ✅ Free / Paid plans |
+The UI is built with **Next.js** and deployed on **Vercel**, served under a custom domain. It supports **light and dark mode**: the default follows the **system preference**, and the user can override it with a manual toggle.
 
+### ⚡ Backend — FastAPI
 
-Create a `config.env` file in the project root and add your API key.  
-**Live Streamlit Demo:** [https://hamdy-ai-tutor.streamlit.app](https://hamdy-ai-tutor.streamlit.app)
+The AI engine runs on a **FastAPI** backend, handling embeddings, summarization, chat, and quiz generation.
 
-### API Security Defaults
-- Set `CORS_ALLOWED_ORIGINS` in `config.env` (comma-separated).
-- Backend endpoints require `Authorization: Bearer <token>` or `X-User-Id` (dev fallback).
-- Do not commit `config.env` to source control.
+### 🗄️ Database — Supabase
+
+**Supabase** serves as the central database and vector store. All user data is persisted:
+
+---
+
+## ✨ Frontend Features
+
+### 📝 Summary Generator
+
+After generation, the summary is displayed as a **well-structured document** with **sub-header boxes** — each subtopic is stored in its own card for easy reading. Summaries can also be **exported**.
+
+### 💬 Chat (Multi-Session)
+
+- Users can create **multiple chat sessions**, each with its own context.
+- Every chat session is **stored in the database** so it can be retrieved or revisited later.
+- Chats are **exportable** in a pdf.
+
+### 🧪 Quiz Generator
+
+- Supports **True/False** and **MCQ** questions.
+- Users can choose **any custom number of questions**.
+- Quizzes are rendered in a **clean, good-looking UI** and can be **exported**.
+
+---
+
+## 🔐 Authentication
+
+**Google OAuth** is used for all authentication — no custom passwords, usernames, or sign-up forms.
+
+---
+
+## 🧠 AI & Backend Details
+
+### Embedding Pipeline
+
+- Uses a **multilingual embedder** for cross-language support.
+- When a material is uploaded, the system **processes it and generates embeddings asynchronously**, allowing **concurrent embedding of multiple materials** in parallel rather than sequentially.
+- A **warm-up cycle** keeps the embedder active — ML models become idle without a forward pass for extended periods, so periodic warm-up prevents cold starts.
+
+### Summary & Quiz Generation
+
+- Uses **OpenRouter's API key** to generate summaries and quizzes based on material embeddings.
+- If a **custom topic** is uploaded (instead of a PDF or URL), the topic text itself is used directly for generation.
+
+### Chatbot
+
+- Uses the **Groq API** (`llama-3.1-8b-instant`) for fast, low-latency responses.
+- For **PDF and URL materials**, the chatbot replies using the stored **embeddings**.
+- Each chat session gets an **auto-generated title** based on the first user message.
+- For **custom topic** materials (no PDF/URL), the chatbot falls back to **web search tools** — **Wikipedia, ArXiv, and DuckDuckGo Search** — to retrieve relevant information.
+
+### Rate Limits
+
+- **Summary & Quiz generation** — 10 requests per day per user (uses OpenRouter).
+- **Chatbot** — unlimited requests (uses Groq).
 
 ---
 
 ## 📸 Screenshots
 
-### 🏠 Home Page
+### 🔑 Google Sign-In
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/dc721ff2-5657-41f6-b75d-ab2d33370bf8" width="800"/>
+  <img src="YOUR_GOOGLE_SIGNIN_IMAGE_URL" alt="Google Sign-In" width="800"/>
 </p>
 
-### 📝 Summary Generator
+### 🏠 Main Dashboard
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/f15c27fe-a759-4abf-9591-d828d69e83ca" width="800"/>
+  <img src="YOUR_DASHBOARD_IMAGE_URL" alt="Main Dashboard" width="800"/>
 </p>
 
+### 📝 Generated Summary
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/dc52f94d-cdb5-40b6-900c-41180a326bac" width = "800" />
+  <img src="YOUR_SUMMARY_IMAGE_URL" alt="Generated Summary" width="800"/>
 </p>
 
-### ❓ Ask the Tutor (Q&A)
+### 💬 Chat Session
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/d21c3c17-5347-44fb-a225-6ba4b94be207" width="800"/>
+  <img src="YOUR_CHAT_SESSION_IMAGE_URL" alt="Chat Session with multiple sessions" width="800"/>
 </p>
 
-### 🧪 Quiz Generator
+### 🧪 Generated Quiz
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/fc06dc60-369a-42b9-8a8e-46e5a3c83b0a" width="800"/>
+  <img src="YOUR_QUIZ_IMAGE_URL" alt="Generated Quiz" width="800"/>
 </p>
 
+### 📄 Export PDF (Quiz)
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/7fc8ae5a-8223-48f9-a908-b986107043dd" width="800"/>
-</p>
-
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/b7a886bf-faf1-4e97-aa9a-0eb8873d9f14" width="800"/>
+  <img src="YOUR_EXPORT_PDF_IMAGE_URL" alt="Export Quiz as PDF" width="800"/>
 </p>
 
 ---
 
-## ✨ Key Features
+## 🔧 Tools & Technologies
 
-- Upload a PDF or URL and get a clean educational summary  
-- Ask questions with source-aware answers  
-- Quiz generator (MCQ + True/False) with explanations  
-- Saves processing time and shows the source used  
-- Can run locally or online using Streamlit Cloud  
-
----
-
-## 🧠 How the AI Works (Simple Explanation)
-
-The app uses a **multi-agent Hybrid RAG system** to pick the best information source.
-
-**If you upload a PDF or a URL:**
-- The app extracts text and splits it into small learning chunks  
-- You can generate a summary or embeddings
-
-**When you ask a question or generate a quiz:**
-1. If embeddings exist → AI retrieves the related information  
-2. If only a summary exists → AI uses the summary  
-3. If neither exist → AI uses random chunks from the start and end of the material  
-
-**If no material is added:**
-- The AI searches the web using:
-  - Wikipedia  
-  - ArXiv research papers  
-  - DuckDuckGo Search (DDGS)
-
-✅ This ensures accurate answers even when material is limited.
-
----
-
-## 🔧 Tools & Technologies Used
-
-| Component | Technology / Model |
-|-----------|-------------------|
-| UI & Frontend | Streamlit |
-| LLM / AI | openai/gpt-oss-120b |
-| Embeddings | sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 |
-| Retrieval & Pipelines | LangChain |
-| Vector Database | ChromaDB |
-| PDF + Text Processing | PyPDF |
-| Web Search | Wikipedia, DDGS, ArXiv |
-| Storage | Local files / vector database |
-
-The system uses a **Hybrid RAG pipeline** to automatically choose the best data source.
-
----
-
-## 🚀 Run Locally
-
-```bash
-git clone https://github.com/Hamdy005/AI-Tutor
-cd AI-Tutor
-pip install -r src/requirements.txt
-cp config.env.example config.env
-streamlit run app.py
+| Component | Technology |
+|-----------|------------|
+| Frontend | Next.js (Vercel + custom domain) |
+| Backend | FastAPI (Python) |
+| Database & Vector Store | Supabase |
+| Summary & Quiz Model | `openai/gpt-oss-120b` via OpenRouter API |
+| Chatbot Model | `llama-3.1-8b-instant` via Groq API |
+| Embeddings | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
+| Auth | Google OAuth |
+| Web Search | Wikipedia, ArXiv, DuckDuckGo |
