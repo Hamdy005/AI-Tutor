@@ -1535,14 +1535,13 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
     startQuizPoller()
 
     try {
-      const quizSourceType = sourceType === 'topic' ? 'web' : sourceType
       const data = await quizAPI.generate(
         difficulty,
         mcqCount,
         tfCount,
-        quizSourceType,
-        sourceType !== 'topic' ? materialId : undefined,
-        sourceType === 'topic' ? topic : undefined,
+        sourceType,
+        materialId,
+        topic,
       )
       if (isMounted.current) {
         setQuizId(data.quiz_id)

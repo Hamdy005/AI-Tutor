@@ -4,6 +4,8 @@ import uuid
 import logging
 from functools import lru_cache
 from typing import Optional
+from pydantic import BaseModel, Field
+from langchain_core.tools import Tool
 
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.prompts import PromptTemplate
@@ -18,7 +20,7 @@ from langchain_openai import ChatOpenAI
 
 from src.config import settings
 from src.database import get_supabase
-from src.store import get_chunks
+from src.store import get_chunks, get_material
 
 logger = logging.getLogger(__name__)
 
@@ -144,21 +146,74 @@ def get_groq_llm():
 
 # ── Web Search Tools ───────────────────────────────────
 
-def web_search_tools(has_material: bool = False):
-    top_k = 1 if has_material else 2
-    chars_max = 1500 if has_material else 4000
+class SearchInput(BaseModel):
+    query: str = Field(description="The search query or topic to look up")
+
+def web_search_tools(has_material: bool = False, top_k: int = 2, chars_max: int = 1500):
+
+    tools = []
     
-    wikipedia = WikipediaQueryRun(
-        api_wrapper=WikipediaAPIWrapper(top_k_results=top_k, doc_content_chars_max=chars_max)
-    )
-    arxiv = ArxivQueryRun(
-        api_wrapper=ArxivAPIWrapper(top_k_results=top_k, doc_content_chars_max=chars_max)
-    )
-    duck = DuckDuckGoSearchResults()
-    return [wikipedia, arxiv, duck]
+    # Target ~12,000 characters total for searches combined to leave room for prompt + output.
+    wiki_k = 1; wiki_chars = 4000
+    arxiv_k = 1; arxiv_chars = 4000
+    duck_chars = 4000
+    
+    try:
+        wiki_api = WikipediaAPIWrapper(top_k_results=wiki_k, doc_content_chars_max=wiki_chars)
+        def safe_wiki_run(query: str) -> str:
+            try: return wiki_api.run(query)[:wiki_k * wiki_chars]
+            except Exception as e: return f"Wikipedia search failed: {e}. Try another tool."
+        
+        wikipedia = Tool(
+            name="wikipedia",
+            description="A wrapper around Wikipedia. Useful for answering general questions about people, places, facts, or historical events. Input should be a search query.",
+            func=safe_wiki_run,
+            args_schema=SearchInput
+        )
+        tools.append(wikipedia)
+    except Exception as e:
+        logger.warning(f"Skipping Wikipedia Search: {e}")
+        # Wikipedia skipped -> allocate its budget to Arxiv
+        arxiv_k = 2; arxiv_chars = 4000 
+        duck_chars = 4000
+
+    try:
+        arxiv_api = ArxivAPIWrapper(top_k_results=arxiv_k, doc_content_chars_max=arxiv_chars)
+        def safe_arxiv_run(query: str) -> str:
+            try: return arxiv_api.run(query)[:arxiv_k * arxiv_chars]
+            except Exception as e: return f"Arxiv search failed: {e}. Try another tool."
+
+        arxiv = Tool(
+            name="arxiv",
+            description="A wrapper around Arxiv.org. Useful for answering questions from scientific articles in Physics, Math, Computer Science, Biology, etc. Input should be a search query.",
+            func=safe_arxiv_run,
+            args_schema=SearchInput
+        )
+        tools.append(arxiv)
+    except Exception as e:
+        logger.warning(f"Skipping Arxiv Search: {e}")
+        # Arxiv skipped -> allocate its budget to DuckDuckGo
+        duck_chars += (arxiv_k * arxiv_chars)
+
+    try:
+        duck_api = DuckDuckGoSearchResults()
+        def safe_duck_run(query: str) -> str:
+            try: return duck_api.run(query)[:duck_chars]
+            except Exception as e: return f"DuckDuckGo search failed: {e}."
+
+        duck = Tool(
+            name="duckduckgo",
+            description="A wrapper around DuckDuckGo Search. Useful for answering questions about current events or latest web insights. Input should be a search query.",
+            func=safe_duck_run,
+            args_schema=SearchInput
+        )
+        tools.append(duck)
+    except Exception as e:
+        logger.warning(f"Skipping DuckDuckGO Search: {e}")
+    return tools
 
 
-# ── Supabase Retriever (replaces FAISS) ────────────────
+# ── Supabase Retriever  ────────────────
 
 class SupabaseRetriever(BaseRetriever):
     material_id: str
@@ -177,45 +232,46 @@ class SupabaseRetriever(BaseRetriever):
 
 # ── RAG Prompt ─────────────────────────────────────────
 
-def _rag_prompt(has_tools: bool = True):
-    tools_section = """
-You have access to these tools:
-- **Wikipedia Retriever** for general knowledge and conceptual explanations,
-- **Arxiv Retriever** for academic and scientific research information,
-- **DuckDuckGo Retriever** for the latest web-based insights,
-- **Knowledge Retriever:** for local learning materials (vector embeddings, summaries, raw text chunks).
-""" if has_tools else ""
+def _rag_prompt(has_web_tools: bool = True, has_knowledge_retriever: bool = False, subject: str = ""):
+    tools_list = []
+    if has_web_tools:
+        tools_list.append("- **Wikipedia Retriever** for general knowledge and conceptual explanations")
+        tools_list.append("- **Arxiv Retriever** for academic and scientific research information")
+        tools_list.append("- **DuckDuckGo Retriever** for the latest web-based insights")
+    if has_knowledge_retriever:
+        tools_list.append("- **Knowledge Retriever:** for local learning materials (vector embeddings, summaries, raw text chunks)")
+    
+    tools_section = ""
+    if tools_list:
+        tools_section = "\nYou have access to these tools:\n" + "\n".join(tools_list)
+
+    subject_line = f"\nYour current study topic is: **{subject}**." if subject else ""
 
     return PromptTemplate(
         input_variables=["chat_history", "input", "agent_scratchpad", "context"],
         template=f"""
-You are a helpful AI study assistant. Your goal is to provide accurate, well-reasoned answers.
+You are a helpful AI study assistant. Your goal is to provide accurate, well-reasoned answers.{subject_line}
 
-You have access to the following context to help you answer:
-
-Context:
+## Context Information
 {{context}}
 {tools_section}
+
 ## Instructions:
 - Use the available context and tools to answer the user's question as thoroughly as possible.
-- The "Context" section contains direct excerpts and information from the user's learning material. You MUST use this to answer questions, even if the "Chat History" is empty.
-- Never claim you don't have information about the lecture or material just because the conversation has just started; always check the "Context" first.
-- If you find relevant information in the context, synthesize it into a clear, well-structured answer.
+- If context is provided, you MUST use it to answer questions.
 - If the context partially answers the question, explain what you know and note any limitations.
 - If the context and tools don't contain enough information, use your own knowledge to provide a helpful response and mention that it's based on general knowledge.
 - Always provide educational value - explain concepts clearly.
+- If the current study topic appears to be a random string, dummy name, or completely un-understandable gibberish, politely inform the user: "I don't recognize a subject with that name. Please rename your subject topic or specify it clearly here."
 
-## FORMATTING RULES:
-- Do NOT use markdown tables or pipe characters (|)
-- Do NOT use separator lines (---, ===)
-- Use ### for Section Headings (e.g. ### Answer:)
+## STRICT FORMATTING RULES:
+- IMPORTANT: DO NOT include the labels "Context:", "Instructions:", "Agent Scratchpad:", or "Available tools:" in your final response.
+- CRITICAL: DO NOT repeat the user's query and don't output JSON tool invocations in your final answer. Provide only the plain text explanation.
+- DO NOT use markdown tables or pipe characters (|)
+- DO NOT use separator lines (---, ===)
+- Begin your main response directly or use clear section labels like "Answer:" and "Key Takeaway:"
 - Use **Text** for important keywords, topics, or terms you want to highlight
-- Use plain text with clear section labels followed by a colon (e.g. "Answer:", "Key Takeaway:")
 - Use numbered lists or bullet points (with a dash -) instead of tables
-
-## Response Format:
-- Answer: Provide a detailed, structured explanation.
-- Key Takeaway: Conclude with a short, relevant summary point.
 
 ---
 ### Chat History:
@@ -244,19 +300,28 @@ def rag_answer(
             input_key="input", memory_key="chat_history", return_messages=True, k=5
         )
 
-    # User requested: remove tool usage when material is uploaded, keep when not
+    # Fetch material info if material_id is provided
+    mat = None
     if material_id:
+        mat = get_material(material_id)
+
+    # Determine tool availability
+    # Custom topics (no URL/file) should use web tools
+    if material_id and mat and mat.get("source_type") != "topic":
         tools = []
     else:
         tools = web_search_tools(has_material=False)
 
-    prompt = _rag_prompt(has_tools=len(tools) > 0)
     llm = get_groq_llm()
 
     context_parts = []
     has_chunks = False
 
-    if material_id:
+    # Inject Subject/Topic
+    if mat and mat.get("title"):
+        context_parts.append(f"Subject / Topic: {mat.get('title')}")
+
+    if material_id and mat and mat.get("source_type") != "topic":
         results = similarity_search(query, material_id, k=5)
         if results:
             has_chunks = True
@@ -268,7 +333,7 @@ def rag_answer(
         context_parts.append(f"Material Summary (No specific excerpts found for your query):\n{summaries}")
 
     # Fallback: If NO chunks matched AND NO summary was generated, pass start and end chunks
-    if not has_chunks and not summaries and material_id:
+    if not has_chunks and not summaries and material_id and mat and mat.get("source_type") != "topic":
         all_chunks = get_chunks(material_id)
         if all_chunks:
             # Take first 3 and last 2 chunks
@@ -279,7 +344,11 @@ def rag_answer(
             sampled_text = "\n---\n".join(c["content"] for c in sampled)
             context_parts.append(f"Material Sample (No summary found; showing start and end of material):\n{sampled_text}")
 
-    context_str = "\n\n".join(context_parts) if context_parts else ""
+    context_str = "\n\n".join(context_parts) if context_parts else "No specific context provided."
+
+    has_knowledge = bool(material_id and mat and mat.get("source_type") != "topic")
+    subject_title = mat.get("title") if mat and mat.get("title") else ""
+    prompt = _rag_prompt(has_web_tools=len(tools) > 0, has_knowledge_retriever=has_knowledge, subject=subject_title)
 
     if tools:
         agent = create_openai_tools_agent(llm, tools, prompt)
@@ -290,6 +359,7 @@ def rag_answer(
             verbose=False,
             return_intermediate_steps=False,
             handle_parsing_errors=True,
+            max_iterations=3,
         )
         response = executor.invoke({"input": query, "context": context_str})
         return response["output"], memory
@@ -313,11 +383,16 @@ def rag_answer(
         memory.save_context({"input": query}, {"output": answer})
         return answer, memory
 
-def extract_chat_title(query: str) -> str:
+def extract_chat_title(query: str, material_title: Optional[str] = None) -> str:
     llm = get_groq_llm()
+    
+    topic_context = ""
+    if material_title:
+        topic_context = f"\nNote: The user is discussing the topic '{material_title}'. If their query uses pronouns like 'its' or 'this', assume it refers to this topic. If the topic name '{material_title}' appears to be a random string or dummy name, do not use it directly; instead, create a general title related to their query, such as 'Types of the topic' or 'Elements of the topic'."
+
     prompt = PromptTemplate(
         input_variables=["query"],
-        template="Generate a very short, concise title (3-5 words max) for a chat session that starts with this user query: '{query}'. Do not use quotes or prefixes like 'Title:', just the title itself."
+        template=f"Generate a very short, concise title (3-5 words max) for a chat session that starts with this user query: '{{query}}'.{topic_context}\nDo not use quotes or prefixes like 'Title:', just the title itself."
     )
     chain = prompt | llm
     response = chain.invoke({"query": query})

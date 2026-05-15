@@ -1,5 +1,6 @@
 import time
 import asyncio
+import logging
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, Any
@@ -17,6 +18,8 @@ from src.store import (
     save_chat_messages, get_chat_messages,
 )
 from src.summary_generator.summary import clean_summary
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tutor", tags=["Tutor"])
 
@@ -92,13 +95,12 @@ async def ask_tutor(
         else:
             answer, memory = await loop.run_in_executor(
                 None,
-                lambda: rag_answer(query=body.query, memory=memory)
+                lambda: rag_answer(query=body.query, material_id=body.material_id, memory=memory)
             )
             source = "Web Search"
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in ask_tutor: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Error generating answer: {e}")
 
     cleaned_answer = clean_summary(answer)
@@ -189,11 +191,19 @@ async def extract_title(
     user_id: str = Depends(get_current_user_id),
 ):
     try:
+        session = get_chat_session(session_id)
+        material_title = None
+        if session and session.get("material_id"):
+            mat = get_material(session["material_id"])
+            if mat:
+                material_title = mat.get("title")
+
         loop = asyncio.get_event_loop()
-        title = await loop.run_in_executor(None, lambda: extract_chat_title(body.query))
+        title = await loop.run_in_executor(None, lambda: extract_chat_title(body.query, material_title))
         rename_chat_session(session_id, title)
         return {"status": "ok", "title": title}
     except Exception as e:
+        logger.error(f"Failed to extract title for session {session_id}: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Failed to extract title: {e}")
 
 

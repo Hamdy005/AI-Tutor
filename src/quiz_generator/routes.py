@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
@@ -7,6 +8,8 @@ from src.quiz_generator.quiz import smart_quiz_generator
 from src.store import get_material, get_chunks, get_summary, save_quiz, get_quizzes, save_quiz_result, get_quiz_results, check_and_increment_daily_limit
 from src.dependencies import get_current_user_id, get_current_user
 from src.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/quiz", tags=["Quiz"])
 
@@ -52,11 +55,18 @@ async def generate_quiz(
 
     try:
         quiz = None
-        material_id = body.material_id if body.source_type in ("pdf", "url") else None
+        material_id = body.material_id
 
-        if body.source_type == "web":
-            if not body.topic:
-                raise HTTPException(400, "Topic is required for web-based quiz")
+        if body.source_type in ("web", "topic"):
+            topic_title = body.topic
+            if not topic_title and body.material_id:
+                mat = get_material(body.material_id)
+                if mat:
+                    topic_title = mat.get("title")
+            
+            if not topic_title:
+                raise HTTPException(400, "Topic title or valid material_id is required for web-based quiz")
+
             loop = asyncio.get_event_loop()
             quiz = await loop.run_in_executor(
                 None,
@@ -64,7 +74,7 @@ async def generate_quiz(
                     difficulty=body.difficulty,
                     mcq_count=body.mcq_count,
                     tf_count=body.tf_count,
-                    topic_title=body.topic,
+                    topic_title=topic_title,
                 )
             )
 
@@ -96,7 +106,7 @@ async def generate_quiz(
         saved = save_quiz(
             user_id=user_id,
             material_id=material_id,
-            source_type=body.source_type,
+            source_type="web" if body.source_type == "topic" else body.source_type,
             difficulty=body.difficulty,
             mcq_count=body.mcq_count,
             tf_count=body.tf_count,
@@ -106,8 +116,10 @@ async def generate_quiz(
 
         return QuizResponse(quiz=quiz, quiz_id=saved["id"])
     except ValueError as e:
+        logger.warning(f"Validation error in generate_quiz: {str(e)}")
         raise HTTPException(400, str(e))
     except Exception as e:
+        logger.error(f"Quiz generation failed: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Quiz generation failed: {e}")
 
 
