@@ -118,6 +118,19 @@ export default function DashboardPage() {
     }
 
     setMaterials(prev => {
+      const prevMap = new Map(prev.map(m => [m.id, m]))
+
+      // Keep later local statuses from regressing while the backend still reports pending
+      for (const [id, material] of serverMap.entries()) {
+        const previous = prevMap.get(id)
+        if (!previous) continue
+        if (material.status === 'pending' && (previous.status === 'processing' || previous.status === 'ready')) {
+          serverMap.set(id, { ...material, status: previous.status })
+        } else if (material.status === 'processing' && previous.status === 'ready') {
+          serverMap.set(id, { ...material, status: 'ready' })
+        }
+      }
+
       // Keep temp entries that haven't been resolved yet
       const tempEntries = prev.filter(m =>
         m.id.startsWith('temp-') && !tempToRealRef.current[m.id]
@@ -231,6 +244,8 @@ export default function DashboardPage() {
       return
     }
 
+    setSearchResults([])
+
     const timer = setTimeout(async () => {
       try {
         const res = await materialsAPI.search(searchQuery.trim())
@@ -250,11 +265,13 @@ export default function DashboardPage() {
     }
   }, [searchQuery])
 
-  const displayMaterials = searchResults !== null
-    ? materials.filter(m => 
-        searchResults.includes(m.id) || 
-        ((m.id.startsWith('temp-') || m.status === 'processing' || m.status === 'pending') && 
-         m.title.toLowerCase().includes(searchQuery.toLowerCase()))
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase()
+  const searchResultIds = new Set(searchResults ?? [])
+
+  const displayMaterials = normalizedSearchQuery
+    ? materials.filter(m =>
+        searchResultIds.has(m.id) ||
+        m.title.toLowerCase().includes(normalizedSearchQuery)
       )
     : materials
 
@@ -270,7 +287,7 @@ export default function DashboardPage() {
       id: tempId,
       title: file.name.replace('.pdf', ''),
       source_type: 'pdf',
-      status: 'processing',
+      status: 'pending',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
@@ -301,11 +318,10 @@ export default function DashboardPage() {
         }
         setMaterials(prev => prev.map(m => {
           if (m.id === tempId) {
-            // If server already pushed a 'ready' status via poll, preserve it
-            const existingReady = prev.find(p => p.id === result.material_id && p.status === 'ready')
+            const existingMaterial = prev.find(p => p.id === result.material_id && !p.id.startsWith('temp-'))
             return {
               ...newMat,
-              status: existingReady ? 'ready' : 'processing'
+              status: existingMaterial?.status || newMat.status
             }
           }
           return m
@@ -337,7 +353,7 @@ export default function DashboardPage() {
       id: tempId,
       title: 'Article from ' + hostname,
       source_type: 'url',
-      status: 'processing',
+      status: 'pending',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
@@ -366,10 +382,10 @@ export default function DashboardPage() {
         }
         setMaterials(prev => prev.map(m => {
           if (m.id === tempId) {
-            const existingReady = prev.find(p => p.id === result.material_id && p.status === 'ready')
+            const existingMaterial = prev.find(p => p.id === result.material_id && !p.id.startsWith('temp-'))
             return {
               ...newMat,
-              status: existingReady ? 'ready' : 'processing'
+              status: existingMaterial?.status || newMat.status
             }
           }
           return m
