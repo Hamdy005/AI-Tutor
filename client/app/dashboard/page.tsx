@@ -224,6 +224,8 @@ export default function DashboardPage() {
 
   // ── Search ──────────────────────────────────────────────────
   useEffect(() => {
+    let active = true
+
     if (!searchQuery.trim()) {
       setSearchResults(null)
       return
@@ -232,13 +234,20 @@ export default function DashboardPage() {
     const timer = setTimeout(async () => {
       try {
         const res = await materialsAPI.search(searchQuery.trim())
-        setSearchResults(res.results.map(r => r.material_id))
+        if (active) {
+          setSearchResults(res.results.map(r => r.material_id))
+        }
       } catch {
-        setSearchResults([])
+        if (active) {
+          setSearchResults([])
+        }
       }
     }, 300)
 
-    return () => clearTimeout(timer)
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
   }, [searchQuery])
 
   const displayMaterials = searchResults !== null
@@ -502,6 +511,10 @@ export default function DashboardPage() {
       year: 'numeric',
     })
   }
+
+  const isCurrentRenameTargetDuplicate = renameTarget ? materials.some(
+    (m) => m.id !== renameTarget.id && m.title.trim().toLowerCase() === renameTarget.title.trim().toLowerCase()
+  ) : false;
 
   return (
     <div className="min-h-screen bg-background">
@@ -933,8 +946,24 @@ export default function DashboardPage() {
         </AlertDialog>
       </main>
 
-      <Dialog open={!!renameTarget} onOpenChange={(open) => { if (!open) setRenameTarget(null) }}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog 
+        open={!!renameTarget} 
+        onOpenChange={(open) => { 
+          if (!open) {
+            if (isCurrentRenameTargetDuplicate) {
+              toast.error('Please choose a unique name for this material.')
+              return
+            }
+            setRenameTarget(null) 
+          }
+        }}
+      >
+        <DialogContent 
+          className="sm:max-w-md"
+          showCloseButton={!isCurrentRenameTargetDuplicate}
+          onInteractOutside={(e) => { if (isCurrentRenameTargetDuplicate) e.preventDefault() }}
+          onEscapeKeyDown={(e) => { if (isCurrentRenameTargetDuplicate) e.preventDefault() }}
+        >
           <DialogHeader>
             <DialogTitle>Rename Material</DialogTitle>
             <DialogDescription>Enter a new name for this material.</DialogDescription>
@@ -953,7 +982,16 @@ export default function DashboardPage() {
                 <p className="text-sm text-destructive">A material with this title already exists.</p>
               )}
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setRenameTarget(null)}>Cancel</Button>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  if (isCurrentRenameTargetDuplicate) {
+                    toast.error('Please choose a unique name for this material.')
+                    return
+                  }
+                  setRenameTarget(null)
+                }}
+              >Cancel</Button>
               <Button
                 onClick={handleRename}
                 disabled={!renameInput.trim() || (renameTarget ? materials.some(
