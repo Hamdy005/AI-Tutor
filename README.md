@@ -1,4 +1,4 @@
-# 🎓 Study Mate
+# "Icon" Study Buddy
 
 AI Tutor is an interactive learning assistant — upload your study materials and get structured summaries, AI-powered chat, and custom quizzes.
 
@@ -77,32 +77,35 @@ After generation, the summary is displayed as a **well-structured document** wit
 
 ### 🔑 Google Sign-In
 <p align="center">
-  <img src="YOUR_GOOGLE_SIGNIN_IMAGE_URL" alt="Google Sign-In" width="800"/>
+  <img src="https://github.com/user-attachments/assets/df7a002f-eabe-41e8-b0d3-9a51c7ba5b94" alt="Google Sign-In" width="800"/>
 </p>
 
 ### 🏠 Main Dashboard
 <p align="center">
-  <img src="YOUR_DASHBOARD_IMAGE_URL" alt="Main Dashboard" width="800"/>
+  <img src="https://github.com/user-attachments/assets/46e98ff1-1933-4688-8285-e5b30018023c" alt="Main Dashboard" width="800"/>
 </p>
 
 ### 📝 Generated Summary
 <p align="center">
-  <img src="YOUR_SUMMARY_IMAGE_URL" alt="Generated Summary" width="800"/>
+  <img src="https://github.com/user-attachments/assets/a9204089-3b5b-424f-96a4-ee6f8be4723c" alt="Generated Summary" width="800"/>
+  <img src="https://github.com/user-attachments/assets/b5d121d3-f86a-4402-83f5-dc3e8e430ae6" alt="Generated Summary" width="800"/>
 </p>
 
 ### 💬 Chat Session
 <p align="center">
-  <img src="YOUR_CHAT_SESSION_IMAGE_URL" alt="Chat Session with multiple sessions" width="800"/>
+  <img src="https://github.com/user-attachments/assets/8fb35724-fcf6-40d1-87c9-76e4f0c4eda5" alt="Chat Session with multiple sessions" width="800"/>
 </p>
 
-### 🧪 Generated Quiz
+### 🧪 Quiz
 <p align="center">
-  <img src="YOUR_QUIZ_IMAGE_URL" alt="Generated Quiz" width="800"/>
+  <img src="https://github.com/user-attachments/assets/0afae1eb-c5f5-48a7-90f5-b3e67d13cad9" alt="Generate Quiz" width="800"/>
+  <img src="https://github.com/user-attachments/assets/3fedae5c-5acc-4175-9b94-4d4afe5d1b39" alt="Generated Quiz" width="800"/>
+  <img src= "https://github.com/user-attachments/assets/9e9cd452-388e-4a03-8176-532d4c306b16" alt="Quiz Results" width="800"/>
 </p>
 
 ### 📄 Export PDF (Quiz)
 <p align="center">
-  <img src="YOUR_EXPORT_PDF_IMAGE_URL" alt="Export Quiz as PDF" width="800"/>
+  <img src="https://github.com/user-attachments/assets/161dfae0-032c-4ce3-bdfd-a51284a15211" alt="Export Quiz as PDF" width="800"/>
 </p>
 
 ---
