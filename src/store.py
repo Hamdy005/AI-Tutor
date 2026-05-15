@@ -143,11 +143,19 @@ def list_materials(user_id: str) -> list[dict]:
     if client is not None:
         try:
             result = _robust_execute(client.table("materials").select("*").eq("user_id", user_id).order("created_at"))
-            return list(reversed(result.data))
+            data = list(reversed(result.data))
+            for r in data:
+                if r.get("source_type") == "url" and not r.get("url"):
+                    r["source_type"] = "topic"
+            return data
         except Exception:
             pass
     records = list(_in_memory.get("materials", {}).values())
-    return list(reversed([r for r in records if r.get("user_id") == user_id]))
+    data = list(reversed([r for r in records if r.get("user_id") == user_id]))
+    for r in data:
+        if r.get("source_type") == "url" and not r.get("url"):
+            r["source_type"] = "topic"
+    return data
 
 
 def is_title_taken(title: str, exclude_id: Optional[str] = None, user_id: Optional[str] = None) -> bool:
@@ -198,14 +206,23 @@ def create_material(user_id: str, source_type: str, title: str,
     except Exception as e:
         logger.error(f"Failed to ensure profile for user {user_id}: {e}")
 
-    data = {"user_id": user_id, "source_type": source_type, "title": title, "status": "pending",
+    # Workaround for DB check constraint that restricts source_type to 'pdf' or 'url'
+    actual_source_type = source_type
+    if source_type == "topic":
+        actual_source_type = "url"
+
+    data = {"user_id": user_id, "source_type": actual_source_type, "title": title, "status": "pending",
             "created_at": now, "updated_at": now}
     if file_path:
         data["file_path"] = file_path
     if url:
         data["url"] = url
     result = _robust_execute(_table_supabase("materials").insert(data))
-    return result.data[0]
+    
+    ret_data = result.data[0]
+    if ret_data.get("source_type") == "url" and not ret_data.get("url"):
+        ret_data["source_type"] = "topic"
+    return ret_data
 
 
 def update_material_status(material_id: str, status: str,
@@ -220,7 +237,12 @@ def get_material(material_id: str) -> Optional[dict]:
     if material_id.startswith("temp-"):
         return None
     result = _robust_execute(_table_supabase("materials").select("*").eq("id", material_id))
-    return result.data[0] if result.data else None
+    if result.data:
+        data = result.data[0]
+        if data.get("source_type") == "url" and not data.get("url"):
+            data["source_type"] = "topic"
+        return data
+    return None
 
 
 def rename_material(material_id: str, title: str):
