@@ -232,7 +232,7 @@ export default function DashboardPage() {
     const timer = setTimeout(async () => {
       try {
         const res = await materialsAPI.search(searchQuery.trim())
-        setSearchResults(res.results)
+        setSearchResults(res.results.map(r => r.material_id))
       } catch {
         setSearchResults([])
       }

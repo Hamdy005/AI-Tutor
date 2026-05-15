@@ -147,7 +147,7 @@ export const materialsAPI = {
     }),
 
   search: (q: string) =>
-    fetchAPI<{ results: string[] }>('/api/materials/search', {
+    fetchAPI<{ results: { material_id: string; relevance: number }[] }>('/api/materials/search', {
       method: 'POST',
       body: JSON.stringify({ q }),
     }),
