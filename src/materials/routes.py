@@ -42,14 +42,14 @@ class URLInput(BaseModel):
     url: str
 
 @router.get("")
-async def get_materials(
+def get_materials(
     user_id: str = Depends(get_current_user_id),
     current_user=Depends(get_current_user),
 ):
     return list_materials(user_id)
 
 @router.get("/{material_id}")
-async def get_material_by_id(
+def get_material_by_id(
     material_id: str,
     user_id: str = Depends(get_current_user_id),
     current_user=Depends(get_current_user),
@@ -61,47 +61,49 @@ async def get_material_by_id(
 
 async def _process_pdf_background(material_id: str, file_content: bytes):
     try:
+        loop = asyncio.get_event_loop()
         # Skip processing if this user already has a material with this title
-        mat = get_material(material_id)
-        if mat and is_title_taken(mat.get("title", ""), exclude_id=material_id, user_id=mat.get("user_id")):
+        mat = await loop.run_in_executor(None, get_material, material_id)
+        if mat and await loop.run_in_executor(None, is_title_taken, mat.get("title", ""), material_id, mat.get("user_id")):
             logger.info(f"Skipping processing for {material_id}: duplicate title")
-            update_material_status(material_id, "failed", "Duplicate title. Please rename to retry.")
+            await loop.run_in_executor(None, update_material_status, material_id, "failed", "Duplicate title. Please rename to retry.")
             return
 
-        loop = asyncio.get_event_loop()
         from io import BytesIO
         raw = await loop.run_in_executor(None, text_from_pdf, BytesIO(file_content))
         chunks = await loop.run_in_executor(None, chunk_text, raw)
         chunk_ids = await loop.run_in_executor(None, save_chunks, material_id, chunks)
 
-        update_material_status(material_id, "processing")
+        await loop.run_in_executor(None, update_material_status, material_id, "processing")
         await store_embeddings_async(material_id, chunk_ids, chunks)
-        update_material_status(material_id, "ready")
+        await loop.run_in_executor(None, update_material_status, material_id, "ready")
         logger.info(f"Background processing complete for material {material_id}")
     except Exception as e:
         logger.error(f"Background processing failed for material {material_id}: {e}", exc_info=True)
-        update_material_status(material_id, "failed", str(e))
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, update_material_status, material_id, "failed", str(e))
 
 async def _process_url_background(material_id: str, url: str):
     try:
+        loop = asyncio.get_event_loop()
         # Skip if this user already has a material with this title
-        mat = get_material(material_id)
-        if mat and is_title_taken(mat.get("title", ""), exclude_id=material_id, user_id=mat.get("user_id")):
+        mat = await loop.run_in_executor(None, get_material, material_id)
+        if mat and await loop.run_in_executor(None, is_title_taken, mat.get("title", ""), material_id, mat.get("user_id")):
             logger.info(f"Skipping URL processing for {material_id}: duplicate title, waiting for rename")
             return
 
-        loop = asyncio.get_event_loop()
         raw = await loop.run_in_executor(None, scrap_website, url)
         chunks = await loop.run_in_executor(None, lambda: chunk_text(raw, chunk_size=600, chunk_overlap=100))
         chunk_ids = await loop.run_in_executor(None, save_chunks, material_id, chunks)
 
-        update_material_status(material_id, "processing")
+        await loop.run_in_executor(None, update_material_status, material_id, "processing")
         await store_embeddings_async(material_id, chunk_ids, chunks)
-        update_material_status(material_id, "ready")
+        await loop.run_in_executor(None, update_material_status, material_id, "ready")
         logger.info(f"Background processing complete for URL material {material_id}")
     except Exception as e:
         logger.error(f"Background processing failed for URL material {material_id}: {e}", exc_info=True)
-        update_material_status(material_id, "failed", str(e))
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, update_material_status, material_id, "failed", str(e))
 
 @router.post("/upload-pdf")
 async def upload_pdf(
@@ -113,12 +115,13 @@ async def upload_pdf(
     _validate_pdf_upload(file)
 
     try:
+        loop = asyncio.get_event_loop()
         content = await file.read()
-        material = create_material(
+        material = await loop.run_in_executor(None, lambda: create_material(
             user_id=user_id,
             source_type="pdf",
             title=file.filename,
-        )
+        ))
         material_id = material["id"]
 
         background_tasks.add_task(_process_pdf_background, material_id, content)
@@ -143,16 +146,18 @@ async def scrape_url(
         raise HTTPException(400, "Invalid URL provided")
 
     try:
-        material = create_material(
+        loop = asyncio.get_event_loop()
+        material = await loop.run_in_executor(None, lambda: create_material(
             user_id=user_id,
             source_type="url",
             title=input.url,
             url=input.url,
-        )
+        ))
         material_id = material["id"]
 
         # Skip processing if title conflicts — user must rename first
-        if not is_title_taken(input.url, exclude_id=material_id, user_id=user_id):
+        is_taken = await loop.run_in_executor(None, is_title_taken, input.url, material_id, user_id)
+        if not is_taken:
             background_tasks.add_task(_process_url_background, material_id, input.url)
 
         return {
@@ -242,7 +247,7 @@ class SearchRequest(BaseModel):
     q: str
 
 @router.post("/search")
-async def search_materials(
+def search_materials(
     request: Request,
     body: SearchRequest,
     user_id: str = Depends(get_current_user_id),
@@ -267,7 +272,7 @@ async def search_materials(
     return {"results": result.data}
     
 @router.delete("/{material_id}")
-async def delete_material_endpoint(
+def delete_material_endpoint(
     material_id: str,
     user_id: str = Depends(get_current_user_id),
     current_user=Depends(get_current_user),

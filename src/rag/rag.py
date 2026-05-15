@@ -94,8 +94,13 @@ async def store_embeddings_async(material_id: str, chunk_ids: list[str], chunks:
         return
 
     logger.info(f"Storing {len(records)} embeddings in Supabase for material {material_id}...")
-    for i in range(0, len(records), 50):
-        db.table("material_embeddings").insert(records[i:i + 50]).execute()
+    
+    def _insert_records():
+        for i in range(0, len(records), 50):
+            db.table("material_embeddings").insert(records[i:i + 50]).execute()
+            
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _insert_records)
     logger.info(f"Embeddings stored successfully for material {material_id}.")
 
 

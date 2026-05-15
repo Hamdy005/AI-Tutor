@@ -251,7 +251,11 @@ export default function DashboardPage() {
   }, [searchQuery])
 
   const displayMaterials = searchResults !== null
-    ? materials.filter(m => searchResults.includes(m.id))
+    ? materials.filter(m => 
+        searchResults.includes(m.id) || 
+        ((m.id.startsWith('temp-') || m.status === 'processing' || m.status === 'pending') && 
+         m.title.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
     : materials
 
   // ── Upload Handlers ─────────────────────────────────────────
@@ -950,19 +954,12 @@ export default function DashboardPage() {
         open={!!renameTarget} 
         onOpenChange={(open) => { 
           if (!open) {
-            if (isCurrentRenameTargetDuplicate) {
-              toast.error('Please choose a unique name for this material.')
-              return
-            }
             setRenameTarget(null) 
           }
         }}
       >
         <DialogContent 
           className="sm:max-w-md"
-          showCloseButton={!isCurrentRenameTargetDuplicate}
-          onInteractOutside={(e) => { if (isCurrentRenameTargetDuplicate) e.preventDefault() }}
-          onEscapeKeyDown={(e) => { if (isCurrentRenameTargetDuplicate) e.preventDefault() }}
         >
           <DialogHeader>
             <DialogTitle>Rename Material</DialogTitle>
@@ -984,13 +981,7 @@ export default function DashboardPage() {
             <div className="flex justify-end gap-2">
               <Button 
                 variant="outline" 
-                onClick={() => {
-                  if (isCurrentRenameTargetDuplicate) {
-                    toast.error('Please choose a unique name for this material.')
-                    return
-                  }
-                  setRenameTarget(null)
-                }}
+                onClick={() => setRenameTarget(null)}
               >Cancel</Button>
               <Button
                 onClick={handleRename}

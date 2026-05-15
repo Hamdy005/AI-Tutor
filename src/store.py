@@ -211,6 +211,13 @@ def create_material(user_id: str, source_type: str, title: str,
     if source_type == "topic":
         actual_source_type = "url"
 
+    # Auto-resolve duplicate titles to prevent DB unique constraint violation
+    original_title = title
+    counter = 1
+    while is_title_taken(title, user_id=user_id):
+        title = f"{original_title} ({counter})"
+        counter += 1
+
     data = {"user_id": user_id, "source_type": actual_source_type, "title": title, "status": "pending",
             "created_at": now, "updated_at": now}
     if file_path:
