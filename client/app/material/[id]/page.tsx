@@ -236,7 +236,7 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
   const [isDeleting, setIsDeleting] = useState(false)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false)
-  const [visitedTabs, setVisitedTabs] = useState<string[]>(['summary'])
+
 
   useEffect(() => {
     if (id.startsWith('temp-')) {
@@ -326,10 +326,6 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
     if (nextTab === resolvedTab) return
     router.replace(`${pathname}?tab=${nextTab}`, { scroll: false })
   }
-
-  useEffect(() => {
-    setVisitedTabs((prev) => (prev.includes(resolvedTab) ? prev : [...prev, resolvedTab]))
-  }, [resolvedTab])
 
   useEffect(() => {
     if (!pathname) return
@@ -465,7 +461,7 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
           </TabsList>
 
           {!isTopic && (
-            <TabsContent value="summary" forceMount={visitedTabs.includes('summary')} className="mt-6">
+            <TabsContent value="summary" forceMount className="mt-6">
               <SummaryTab
                 materialId={id}
                 sourceType={material.source_type}
@@ -477,11 +473,11 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
             </TabsContent>
           )}
 
-          <TabsContent value="chat" forceMount={visitedTabs.includes('chat')} className="mt-6">
+          <TabsContent value="chat" forceMount className="mt-6">
             <ChatTab materialId={id} sourceType={material.source_type} topic={material.topic} materialTitle={material.title} />
           </TabsContent>
 
-          <TabsContent value="quiz" forceMount={visitedTabs.includes('quiz')} className="mt-6">
+          <TabsContent value="quiz" forceMount className="mt-6">
             <QuizTab
               materialId={id}
               sourceType={material.source_type}
