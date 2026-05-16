@@ -1,8 +1,8 @@
 <p>
-  <img src="client/public/icon.svg" width="40" valign="middle">
+  <img src="client/public/icon.svg" width="50" valign="middle">
   <strong>
-  <span style="font-size:80px; vertical-align:middle;">
-    Study Buddy
+  <span style="font-size:50px; vertical-align:middle;">
+   &nbsp;Study Buddy
   </span>
 </strong>
 </p>
