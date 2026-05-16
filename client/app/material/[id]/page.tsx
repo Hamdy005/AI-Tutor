@@ -1417,11 +1417,38 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
   const [quizId, setQuizId] = useState<string | null>(null)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [result, setResult] = useState<QuizResult | null>(null)
+  const [isLoadingExistingQuiz, setIsLoadingExistingQuiz] = useState(sourceType !== 'topic')
 
   const clampCount = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const isMounted = useRef(true)
+  const pendingQuizBaselineIdRef = useRef<string | null>(null)
+  const getQuizDraftKey = (id: string) => `quiz_draft_${materialId}_${id}`
+
+  const clearQuizDraft = (id?: string | null) => {
+    if (!id) return
+    localStorage.removeItem(getQuizDraftKey(id))
+  }
+
+  const readQuizDraft = (id: string, quizQuestions: QuizQuestion[]) => {
+    try {
+      const raw = localStorage.getItem(getQuizDraftKey(id))
+      if (!raw) return {}
+      const parsed = JSON.parse(raw) as { answers?: Record<string, string> }
+      const validQuestionIds = new Set(quizQuestions.map((q) => q.id))
+      return Object.fromEntries(
+        Object.entries(parsed.answers || {}).filter(
+          ([questionId, value]) => validQuestionIds.has(questionId) && typeof value === 'string' && value.trim()
+        )
+      ) as Record<string, string>
+    } catch {
+      return {}
+    }
+  }
 
   const stopQuizGenerating = () => {
     setIsGenerating(false)
+    pendingQuizBaselineIdRef.current = null
     localStorage.removeItem(`generating_quiz_${materialId}`)
     if (pollingRef.current) {
       clearInterval(pollingRef.current)
@@ -1455,28 +1482,32 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
     return [...mcqQuestions, ...tfQuestions]
   }
 
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const isMounted = useRef(true)
-
   useEffect(() => {
     isMounted.current = true
     return () => { isMounted.current = false }
   }, [])
 
-  const startQuizPoller = () => {
+  const startQuizPoller = (baselineQuizId?: string | null) => {
     if (pollingRef.current) return
+    pendingQuizBaselineIdRef.current = baselineQuizId ?? null
     pollingRef.current = setInterval(async () => {
       try {
         const quizzes = await quizAPI.list(materialId)
         if (quizzes.length > 0 && isMounted.current) {
-          // If we find a new quiz, stop polling
           const latest = quizzes[quizzes.length - 1]
+          if (pendingQuizBaselineIdRef.current && latest.id === pendingQuizBaselineIdRef.current) {
+            return
+          }
           setQuizId(latest.id)
           const rawQuiz = latest.quiz_data || latest.quiz
           if (rawQuiz) {
             const formatted = parseQuizData(rawQuiz)
-            if (formatted.length > 0) setQuestions(formatted)
+            if (formatted.length > 0) {
+              setQuestions(formatted)
+              setAnswers(readQuizDraft(latest.id, formatted))
+            }
           }
+          setResult(null)
           stopQuizGenerating()
         }
       } catch { }
@@ -1486,38 +1517,57 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
   // ── Load existing quiz on mount ──────────────────────
   useEffect(() => {
     const checkStatus = async () => {
-      if (sourceType === 'topic') return
+      if (sourceType === 'topic') {
+        setIsLoadingExistingQuiz(false)
+        return
+      }
 
       const wasGenerating = localStorage.getItem(`generating_quiz_${materialId}`) === 'true'
-      if (wasGenerating) {
-        setIsGenerating(true)
-        startQuizPoller()
-      }
+      setIsLoadingExistingQuiz(true)
 
       try {
         const quizzes = await quizAPI.list(materialId)
-        if (quizzes.length > 0) {
-          const latest = quizzes[quizzes.length - 1]
-          setQuizId(latest.id)
-          const rawQuiz = latest.quiz_data || latest.quiz
-          if (rawQuiz) {
-            const formatted = parseQuizData(rawQuiz)
-            if (formatted.length > 0) setQuestions(formatted)
-          }
+        const latest = quizzes.length > 0 ? quizzes[quizzes.length - 1] : null
 
-          if (wasGenerating) {
-            stopQuizGenerating()
-          }
+        if (wasGenerating) {
+          setIsGenerating(true)
+          setQuestions([])
+          setAnswers({})
+          setResult(null)
+          startQuizPoller(latest?.id ?? null)
+        }
+
+        if (latest) {
+          const rawQuiz = latest.quiz_data || latest.quiz
+          const formatted = rawQuiz ? parseQuizData(rawQuiz) : []
+          let latestResult: QuizResult | null = null
 
           try {
             const results = await quizAPI.getResults(latest.id)
-            if (results.length > 0) {
+            if (results.length > 0 && !wasGenerating) {
               const lastResult = results[results.length - 1].results
-              if (lastResult) setResult(lastResult as QuizResult)
+              if (lastResult) latestResult = lastResult as QuizResult
             }
           } catch { }
+
+          setQuizId(latest.id)
+          if (!wasGenerating) {
+            setQuestions(formatted)
+            if (latestResult) {
+              clearQuizDraft(latest.id)
+              setAnswers({})
+            } else {
+              setAnswers(readQuizDraft(latest.id, formatted))
+            }
+            setResult(latestResult)
+          }
         }
       } catch { }
+      finally {
+        if (isMounted.current) {
+          setIsLoadingExistingQuiz(false)
+        }
+      }
     }
     checkStatus()
 
@@ -1528,11 +1578,16 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
 
   // ── Generate quiz ────────────────────────────────────
   const generateQuiz = async () => {
+    const baselineQuizId = quizId
     setIsGenerating(true)
+    setQuestions([])
     setResult(null)
     setAnswers({})
+    setQuizId(null)
     localStorage.setItem(`generating_quiz_${materialId}`, 'true')
-    startQuizPoller()
+    startQuizPoller(baselineQuizId)
+
+    let generated = false
 
     try {
       const data = await quizAPI.generate(
@@ -1544,10 +1599,12 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
         topic,
       )
       if (isMounted.current) {
+        generated = true
         setQuizId(data.quiz_id)
         const formatted = parseQuizData(data.quiz)
         if (formatted.length > 0) {
           setQuestions(formatted)
+          setAnswers(readQuizDraft(data.quiz_id, formatted))
           stopQuizGenerating()
           toast.success('Quiz generated!')
         } else {
@@ -1557,8 +1614,8 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
     } catch {
       toast.error('Failed to generate quiz. Please try again.')
     } finally {
-      if (isMounted.current) {
-        if (questions.length === 0) stopQuizGenerating()
+      if (isMounted.current && !generated) {
+        stopQuizGenerating()
       }
     }
   }
@@ -1581,12 +1638,36 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
     }
     setResult(resultData)
     if (quizId) {
+      clearQuizDraft(quizId)
       quizAPI.saveResult(quizId, resultData as unknown as Record<string, unknown>).catch(() => { })
     }
     toast.success(`Quiz completed! Score: ${resultData.score}%`)
   }
 
-  const resetQuiz = () => { setQuestions([]); setAnswers({}); setResult(null) }
+  const resetQuiz = () => {
+    clearQuizDraft(quizId)
+    setQuestions([])
+    setAnswers({})
+    setResult(null)
+  }
+
+  useEffect(() => {
+    if (!quizId || questions.length === 0 || result) return
+
+    const validQuestionIds = new Set(questions.map((q) => q.id))
+    const filteredAnswers = Object.fromEntries(
+      Object.entries(answers).filter(
+        ([questionId, value]) => validQuestionIds.has(questionId) && typeof value === 'string' && value.trim()
+      )
+    )
+
+    if (Object.keys(filteredAnswers).length === 0) {
+      clearQuizDraft(quizId)
+      return
+    }
+
+    localStorage.setItem(getQuizDraftKey(quizId), JSON.stringify({ answers: filteredAnswers }))
+  }, [answers, questions, quizId, result])
 
   // ── Export PDF ───────────────────────────────────────
   const handleExportPDF = () => {
@@ -1615,6 +1696,23 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
   }
 
   // ── Results view ─────────────────────────────────────
+  if (isLoadingExistingQuiz && !isGenerating) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+        <Card>
+          <CardContent className="py-16">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="h-6 w-6 text-primary animate-spin" />
+              <p className="text-sm text-muted-foreground text-center">
+                Loading your latest quiz...
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    )
+  }
+
   if (result && questions.length > 0) {
     return (
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
@@ -1907,15 +2005,6 @@ function QuizTab({ materialId, sourceType, topic, materialTitle, isGenerating, s
               </div>
             </div>
           </div>
-
-          {isGenerating && (
-            <div className="flex flex-col items-center gap-3 py-4 rounded-xl bg-primary/5 border border-primary/20">
-              <Loader2 className="h-6 w-6 text-primary animate-spin" />
-              <p className="text-sm text-muted-foreground text-center">
-                Generating your quiz - This might take a while...
-              </p>
-            </div>
-          )}
 
           <Button onClick={generateQuiz} disabled={isGenerating} className="w-full" size="lg">
             {isGenerating ? (
