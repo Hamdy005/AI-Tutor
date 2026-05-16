@@ -1,6 +1,6 @@
-# "Icon" Study Buddy
+# <img src="client/public/icon.svg" width="28" height="28" alt="icon"/> Study Buddy
 
-AI Tutor is an interactive learning assistant — upload your study materials and get structured summaries, AI-powered chat, and custom quizzes.
+AI Tutor is a Next.js AI tutor powered by FastAPI and Supabase. Upload PDFs and URLs to generate structured summaries, multi-session chat, and custom quizzes. Custom topics use web search through Wikipedia, ArXiv, and DuckDuckGo.
 
 ---
 
@@ -21,6 +21,8 @@ The AI engine runs on a **FastAPI** backend, handling embeddings, summarization,
 ---
 
 ## ✨ Frontend Features
+
+You can upload a **PDF**, provide a **URL**, or enter a **custom topic** — the system generates embeddings (for PDFs and URLs) or uses web search (for custom topics) to power all the features below.
 
 ### 📝 Summary Generator
 
