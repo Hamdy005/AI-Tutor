@@ -8,15 +8,27 @@ import { Loader2 } from 'lucide-react'
 
 export default function AuthCallbackPage() {
   const router = useRouter()
-  const { login } = useAuth()
+  const { login, logout } = useAuth()
 
   useEffect(() => {
     const handleCallback = async () => {
+      const searchParams = new URLSearchParams(window.location.search)
+      const hashParams = new URLSearchParams(window.location.hash.replace('#', '?'))
+      const errorParam = searchParams.get('error') || hashParams.get('error')
+
+      if (errorParam) {
+        console.error('OAuth callback error:', errorParam)
+        logout()
+        router.replace(`/?error=${errorParam}`)
+        return
+      }
+
       // Supabase exchanges the URL hash/code for a session automatically
       const { data, error } = await supabase.auth.getSession()
 
       if (error || !data.session) {
         console.error('OAuth callback error:', error)
+        logout()
         router.replace('/?error=oauth_failed')
         return
       }
@@ -42,7 +54,7 @@ export default function AuthCallbackPage() {
     }
 
     handleCallback()
-  }, [login, router])
+  }, [login, logout, router])
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">

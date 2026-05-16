@@ -42,6 +42,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user?.theme, setTheme])
 
   useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search)
+    const hashParams = new URLSearchParams(window.location.hash.replace('#', '?'))
+    if (searchParams.has('error') || hashParams.has('error')) {
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_user')
+      setIsLoading(false)
+      return
+    }
+
     const storedToken = localStorage.getItem('auth_token')
     const storedUser = localStorage.getItem('auth_user')
     if (storedToken && storedUser) {
@@ -57,6 +66,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search)
+    const hashParams = new URLSearchParams(window.location.hash.replace('#', '?'))
+    if (searchParams.has('error') || hashParams.has('error')) {
+      supabase.auth.signOut().catch(() => {})
+      return
+    }
+
     let isActive = true
     const syncSupabaseSession = async () => {
       try {

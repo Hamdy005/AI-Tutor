@@ -35,14 +35,23 @@ const features = [
 
 export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false)
-  const { user, isLoading: isAuthLoading } = useAuth()
+  const { user, isLoading: isAuthLoading, logout } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search)
+    const hashParams = new URLSearchParams(window.location.hash.replace('#', '?'))
+    if (searchParams.has('error') || hashParams.has('error')) {
+      if (user) {
+        logout()
+      }
+      return
+    }
+
     if (!isAuthLoading && user) {
       router.replace('/dashboard')
     }
-  }, [user, isAuthLoading, router])
+  }, [user, isAuthLoading, router, logout])
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true)
@@ -63,7 +72,12 @@ export default function HomePage() {
     }
   }
 
-  if (isAuthLoading || user) {
+  const hasError = typeof window !== 'undefined' && (
+    new URLSearchParams(window.location.search).has('error') ||
+    new URLSearchParams(window.location.hash.replace('#', '?')).has('error')
+  )
+
+  if (isAuthLoading || (user && !hasError)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
