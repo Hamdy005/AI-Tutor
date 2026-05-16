@@ -1,4 +1,11 @@
-# <img src="client/public/icon.svg" width="28" height="28" alt="icon"/> Study Buddy
+<p>
+  <img src="client/public/icon.svg" width="40" valign="middle">
+  <strong>
+  <span style="font-size:80px; vertical-align:middle;">
+    Study Buddy
+  </span>
+</strong>
+</p>
 
 AI Tutor is a Next.js AI tutor powered by FastAPI and Supabase. Upload PDFs and URLs to generate structured summaries, multi-session chat, and custom quizzes. Custom topics use web search through Wikipedia, ArXiv, and DuckDuckGo.
 
@@ -89,25 +96,31 @@ After generation, the summary is displayed as a **well-structured document** wit
 
 ### 📝 Generated Summary
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/a9204089-3b5b-424f-96a4-ee6f8be4723c" alt="Generated Summary" width="800"/>
-  <img src="https://github.com/user-attachments/assets/b5d121d3-f86a-4402-83f5-dc3e8e430ae6" alt="Generated Summary" width="800"/>
+  <img src="https://github.com/user-attachments/assets/478edde7-d692-40a7-bcdd-b7a63f839504" alt="Generated Summary" width="800"/>
+  <br/>
+  <br/>
+  <img src="https://github.com/user-attachments/assets/d0468650-6f27-4838-97f9-20ffd8fc75aa" alt="Generated Summary" width="800"/>
 </p>
 
 ### 💬 Chat Session
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/8fb35724-fcf6-40d1-87c9-76e4f0c4eda5" alt="Chat Session with multiple sessions" width="800"/>
+  <img src="https://github.com/user-attachments/assets/01ed1e77-60bf-4bc5-a300-91ff66469c4d" alt="Chat Session with multiple sessions" width="800"/>
 </p>
 
 ### 🧪 Quiz
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/0afae1eb-c5f5-48a7-90f5-b3e67d13cad9" alt="Generate Quiz" width="800"/>
-  <img src="https://github.com/user-attachments/assets/3fedae5c-5acc-4175-9b94-4d4afe5d1b39" alt="Generated Quiz" width="800"/>
-  <img src= "https://github.com/user-attachments/assets/9e9cd452-388e-4a03-8176-532d4c306b16" alt="Quiz Results" width="800"/>
+  <img src="https://github.com/user-attachments/assets/e23a8de6-f55b-4fbe-ada6-c3ef93202374" alt="Generate Quiz" width="800"/>
+  <br/>
+  <br/>
+  <img src="https://github.com/user-attachments/assets/3e009295-2f2d-4d53-81a4-bbd6c2700134" alt="Generated Quiz" width="800"/>
+  <br/>
+  <br/>
+  <img src="https://github.com/user-attachments/assets/8c623980-665b-49bb-9c3a-b0f2fe741008" alt="Quiz Results" width="800"/>
 </p>
 
 ### 📄 Export PDF (Quiz)
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/161dfae0-032c-4ce3-bdfd-a51284a15211" alt="Export Quiz as PDF" width="800"/>
+  <img src="https://github.com/user-attachments/assets/dcc2659f-da33-4e7a-9c36-6d31b0ef3200" alt="Export Quiz as PDF" width="800"/>
 </p>
 
 ---
