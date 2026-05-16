@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, use } from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft,
@@ -225,8 +225,8 @@ const sourceTypeConfig: Record<string, { icon: React.ElementType; label: string;
 export default function MaterialDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
-  const activeTab = searchParams.get('tab') || 'summary'
 
   const [material, setMaterial] = useState<Material | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -236,6 +236,7 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
   const [isDeleting, setIsDeleting] = useState(false)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false)
+  const [visitedTabs, setVisitedTabs] = useState<string[]>(['summary'])
 
   useEffect(() => {
     if (id.startsWith('temp-')) {
@@ -263,10 +264,6 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
     }
     loadMaterial()
   }, [id])
-
-  const handleTabChange = (value: string) => {
-    router.push(`/material/${id}?tab=${value}`, { scroll: false })
-  }
 
   const handleRename = async () => {
     if (!renameInput.trim() || !material) return
@@ -312,6 +309,34 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
     }
   }
 
+  const sourceType = sourceTypeConfig[material?.source_type ?? 'pdf'] || sourceTypeConfig.pdf
+  const SourceIcon = sourceType.icon
+  const isTopic = material?.source_type === 'topic'
+  const requestedTab = searchParams.get('tab')
+  const normalizedRequestedTab =
+    requestedTab === 'summary' || requestedTab === 'chat' || requestedTab === 'quiz'
+      ? requestedTab
+      : null
+  const resolvedTab = isTopic
+    ? normalizedRequestedTab === 'quiz' ? 'quiz' : 'chat'
+    : normalizedRequestedTab ?? 'summary'
+
+  const handleTabChange = (value: string) => {
+    const nextTab = isTopic && value === 'summary' ? 'chat' : value
+    if (nextTab === resolvedTab) return
+    router.replace(`${pathname}?tab=${nextTab}`, { scroll: false })
+  }
+
+  useEffect(() => {
+    setVisitedTabs((prev) => (prev.includes(resolvedTab) ? prev : [...prev, resolvedTab]))
+  }, [resolvedTab])
+
+  useEffect(() => {
+    if (!pathname) return
+    if (requestedTab === resolvedTab) return
+    router.replace(`${pathname}?tab=${resolvedTab}`, { scroll: false })
+  }, [pathname, requestedTab, resolvedTab, router])
+
   if (isLoading && !material) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -333,12 +358,6 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
       </div>
     )
   }
-
-  const sourceType = sourceTypeConfig[material.source_type] || sourceTypeConfig.pdf
-  const SourceIcon = sourceType.icon
-  const isTopic = material.source_type === 'topic'
-  const topic = material.topic || material.title
-  const resolvedTab = isTopic && (activeTab === 'summary' || activeTab === '') ? 'chat' : activeTab
 
   return (
     <div className="min-h-screen bg-background">
@@ -446,22 +465,23 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
           </TabsList>
 
           {!isTopic && (
-            <TabsContent value="summary" className="mt-6">
+            <TabsContent value="summary" forceMount={visitedTabs.includes('summary')} className="mt-6">
               <SummaryTab
                 materialId={id}
                 sourceType={material.source_type}
                 materialTitle={material.title}
                 isGenerating={isGeneratingSummary}
                 setIsGenerating={setIsGeneratingSummary}
+                onTabChange={handleTabChange}
               />
             </TabsContent>
           )}
 
-          <TabsContent value="chat" className="mt-6">
+          <TabsContent value="chat" forceMount={visitedTabs.includes('chat')} className="mt-6">
             <ChatTab materialId={id} sourceType={material.source_type} topic={material.topic} materialTitle={material.title} />
           </TabsContent>
 
-          <TabsContent value="quiz" className="mt-6">
+          <TabsContent value="quiz" forceMount={visitedTabs.includes('quiz')} className="mt-6">
             <QuizTab
               materialId={id}
               sourceType={material.source_type}
@@ -508,12 +528,13 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
   )
 }
 
-function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIsGenerating }: {
+function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIsGenerating, onTabChange }: {
   materialId: string
   sourceType: string
   materialTitle: string
   isGenerating: boolean
   setIsGenerating: (v: boolean) => void
+  onTabChange: (value: string) => void
 }) {
   const [summary, setSummary] = useState<string | null>(null)
   const [isLoadingExisting, setIsLoadingExisting] = useState(true)
@@ -686,11 +707,11 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
               Custom topics don't include source material to summarize. Try the Chat tab to discuss this topic or generate a Quiz to test your knowledge.
             </p>
             <div className="flex gap-3 justify-center">
-              <Button variant="outline" onClick={() => window.history.replaceState(null, '', `?tab=chat`)}>
+              <Button variant="outline" onClick={() => onTabChange('chat')}>
                 <MessageSquare className="mr-2 h-4 w-4" />
                 Chat About It
               </Button>
-              <Button onClick={() => window.history.replaceState(null, '', `?tab=quiz`)}>
+              <Button onClick={() => onTabChange('quiz')}>
                 <Brain className="mr-2 h-4 w-4" />
                 Take a Quiz
               </Button>
