@@ -67,12 +67,14 @@ const sourceTypeConfig: Record<string, { icon: React.ElementType; label: string;
 }
 
 const statusConfig: Record<string, { icon: React.ElementType; label: string; color: string; animate: boolean }> = {
-  pending: { icon: Loader2, label: 'Pending', color: 'bg-gray-500/10 text-gray-600', animate: true },
+  pending: { icon: Loader2, label: 'Uploading', color: 'bg-gray-500/10 text-gray-600', animate: true },
   processing: { icon: Loader2, label: 'Processing', color: 'bg-yellow-500/10 text-yellow-600', animate: true },
   ready: { icon: CheckCircle2, label: 'Ready', color: 'bg-green-500/10 text-green-600', animate: false },
   error: { icon: AlertCircle, label: 'Error', color: 'bg-red-500/10 text-red-600', animate: false },
   failed: { icon: AlertCircle, label: 'Failed', color: 'bg-red-500/10 text-red-600', animate: false },
 }
+
+const PENDING_UPLOAD_TIMEOUT_MS = 720000
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -98,6 +100,8 @@ export default function DashboardPage() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const loadCounterRef = useRef(0)
+  const pendingUploadTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const expiredPendingUploadsRef = useRef<Record<string, true>>({})
 
   // Track local title overrides so polling never wipes user renames
   const localTitlesRef = useRef<Record<string, string>>({})
@@ -180,6 +184,30 @@ export default function DashboardPage() {
         }
       }
     }, 3000)
+  }
+
+  const clearPendingUploadTimeout = (tempId: string) => {
+    const timeout = pendingUploadTimeoutsRef.current[tempId]
+    if (timeout) {
+      clearTimeout(timeout)
+      delete pendingUploadTimeoutsRef.current[tempId]
+    }
+  }
+
+  const removeTempMaterial = (tempId: string) => {
+    setMaterials(prev => prev.filter(m => m.id !== tempId))
+    setRenameTarget(prev => (prev?.id === tempId ? null : prev))
+    delete localTitlesRef.current[tempId]
+    delete tempToRealRef.current[tempId]
+  }
+
+  const startPendingUploadTimeout = (tempId: string) => {
+    clearPendingUploadTimeout(tempId)
+    pendingUploadTimeoutsRef.current[tempId] = setTimeout(() => {
+      expiredPendingUploadsRef.current[tempId] = true
+      removeTempMaterial(tempId)
+      toast.error('Upload failed after taking too long. The material was removed from the dashboard.')
+    }, PENDING_UPLOAD_TIMEOUT_MS)
   }
 
   useEffect(() => {
@@ -297,10 +325,17 @@ export default function DashboardPage() {
     setMaterials(prev => [tempMaterial, ...prev])
     setRenameTarget(tempMaterial)
     setRenameInput(tempMaterial.title)
+    startPendingUploadTimeout(tempId)
 
     // Upload in background — completely non-blocking
     materialsAPI.uploadPDF(file)
       .then((result) => {
+        clearPendingUploadTimeout(tempId)
+        if (expiredPendingUploadsRef.current[tempId]) {
+          delete expiredPendingUploadsRef.current[tempId]
+          materialsAPI.delete(result.material_id).catch(() => { })
+          return
+        }
         const newMat: Material = {
           id: result.material_id,
           title: localTitlesRef.current[tempId] || result.title || file.name.replace('.pdf', ''),
@@ -331,11 +366,14 @@ export default function DashboardPage() {
         startPolling()
       })
       .catch((err) => {
+        clearPendingUploadTimeout(tempId)
+        if (expiredPendingUploadsRef.current[tempId]) {
+          delete expiredPendingUploadsRef.current[tempId]
+          return
+        }
         const msg = err instanceof Error ? err.message : 'Upload failed'
         toast.error(msg)
-        setMaterials(prev => prev.filter(m => m.id !== tempId))
-        setRenameTarget(prev => (prev?.id === tempId ? null : prev))
-        delete localTitlesRef.current[tempId]
+        removeTempMaterial(tempId)
       })
   }
 
@@ -364,9 +402,16 @@ export default function DashboardPage() {
     setMaterials(prev => [tempMaterial, ...prev])
     setRenameTarget(tempMaterial)
     setRenameInput(tempMaterial.title)
+    startPendingUploadTimeout(tempId)
 
     materialsAPI.scrapeURL(url)
       .then((result) => {
+        clearPendingUploadTimeout(tempId)
+        if (expiredPendingUploadsRef.current[tempId]) {
+          delete expiredPendingUploadsRef.current[tempId]
+          materialsAPI.delete(result.material_id).catch(() => { })
+          return
+        }
         const newMat: Material = {
           id: result.material_id,
           title: localTitlesRef.current[tempId] || result.title || 'New Article',
@@ -395,11 +440,14 @@ export default function DashboardPage() {
         startPolling()
       })
       .catch((err) => {
+        clearPendingUploadTimeout(tempId)
+        if (expiredPendingUploadsRef.current[tempId]) {
+          delete expiredPendingUploadsRef.current[tempId]
+          return
+        }
         const msg = err instanceof Error ? err.message : 'Failed to add URL'
         toast.error(msg)
-        setMaterials(prev => prev.filter(m => m.id !== tempId))
-        setRenameTarget(prev => (prev?.id === tempId ? null : prev))
-        delete localTitlesRef.current[tempId]
+        removeTempMaterial(tempId)
       })
   }
 
