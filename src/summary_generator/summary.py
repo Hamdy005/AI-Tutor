@@ -68,8 +68,23 @@ def clean_summary(text: str) -> str:
     return '\n'.join(cleaned)
 
 
+MAX_INPUT_CHARS = 15000
+
+
+def _truncate_text(text: str, max_chars: int = MAX_INPUT_CHARS) -> str:
+    if len(text) <= max_chars:
+        return text
+    first_len = int(max_chars * 0.6)
+    last_len = max_chars - first_len
+    first_part = text[:first_len]
+    last_part = text[-last_len:]
+    logger.info(f"Text truncated from {len(text)} to {max_chars} chars")
+    return f"{first_part}\n\n...[content truncated]...\n\n{last_part}"
+
+
 def summarizer(text: str) -> str:
     logger.info(f"Summarizer started for text of length {len(text)}")
+    text = _truncate_text(text)
     try:
         prompt = summarizer_prompt()
         llm = get_llm()

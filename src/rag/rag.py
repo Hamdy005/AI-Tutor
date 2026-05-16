@@ -135,6 +135,9 @@ def get_llm():
         model=settings.model_name,
         base_url=settings.openrouter_base_url,
         api_key=settings.openrouter_api_key,
+        temperature=0.3,
+        max_tokens=2000,
+        timeout=120,
     )
 
 
