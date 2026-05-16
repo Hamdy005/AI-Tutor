@@ -670,12 +670,12 @@ export default function DashboardPage() {
                         <Label htmlFor="topic">Custom Topic</Label>
                         <Input
                           id="topic"
-                          placeholder="e.g. Quantum Physics, World War II, Python Programming..."
+                          placeholder="e.g. Neural Networks, Redis Caching, CI/CD Pipelines"
                           value={topicInput}
                           onChange={(e) => setTopicInput(e.target.value)}
                         />
                         <p className="text-xs text-muted-foreground">
-                          Study Buddy will use AI to generate summaries, quizzes, and answer questions about this topic.
+                          Study Buddy will use AI to generate quizzes and answer questions about this topic.
                         </p>
                       </div>
                       <Button
