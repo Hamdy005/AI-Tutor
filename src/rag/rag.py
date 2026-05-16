@@ -154,15 +154,15 @@ def get_groq_llm():
 class SearchInput(BaseModel):
     query: str = Field(description="The search query or topic to look up")
 
-def web_search_tools(has_material: bool = False, top_k: int = 2, chars_max: int = 1500):
+def web_search_tools(has_material: bool = False):
 
     tools = []
     
-    # Target ~12,000 characters total for searches combined to leave room for prompt + output.
-    wiki_k = 1; wiki_chars = 4000
-    arxiv_k = 1; arxiv_chars = 4000
-    duck_chars = 4000
-    
+    # Target ~16,500 chars total across all tools
+    wiki_k = 2;   wiki_chars = 3000    # 6,000 total
+    arxiv_k = 3;  arxiv_chars = 2500   # 7,500 total
+    duck_chars = 3000                   # 3,000 total
+
     try:
         wiki_api = WikipediaAPIWrapper(top_k_results=wiki_k, doc_content_chars_max=wiki_chars)
         def safe_wiki_run(query: str) -> str:
@@ -171,16 +171,14 @@ def web_search_tools(has_material: bool = False, top_k: int = 2, chars_max: int 
         
         wikipedia = Tool(
             name="wikipedia",
-            description="A wrapper around Wikipedia. Useful for answering general questions about people, places, facts, or historical events. Input should be a search query.",
+            description="Search Wikipedia for factual, historical, or conceptual questions. Input should be a specific search query.",
             func=safe_wiki_run,
             args_schema=SearchInput
         )
         tools.append(wikipedia)
     except Exception as e:
         logger.warning(f"Skipping Wikipedia Search: {e}")
-        # Wikipedia skipped -> allocate its budget to Arxiv
-        arxiv_k = 2; arxiv_chars = 4000 
-        duck_chars = 4000
+        arxiv_k = 4; arxiv_chars = 2500  # reallocate budget
 
     try:
         arxiv_api = ArxivAPIWrapper(top_k_results=arxiv_k, doc_content_chars_max=arxiv_chars)
@@ -190,14 +188,13 @@ def web_search_tools(has_material: bool = False, top_k: int = 2, chars_max: int 
 
         arxiv = Tool(
             name="arxiv",
-            description="A wrapper around Arxiv.org. Useful for answering questions from scientific articles in Physics, Math, Computer Science, Biology, etc. Input should be a search query.",
+            description="Search scientific papers on Arxiv for technical, academic, or research questions in Physics, Math, CS, Biology, etc. Input should be a specific search query.",
             func=safe_arxiv_run,
             args_schema=SearchInput
         )
         tools.append(arxiv)
     except Exception as e:
         logger.warning(f"Skipping Arxiv Search: {e}")
-        # Arxiv skipped -> allocate its budget to DuckDuckGo
         duck_chars += (arxiv_k * arxiv_chars)
 
     try:
@@ -208,15 +205,15 @@ def web_search_tools(has_material: bool = False, top_k: int = 2, chars_max: int 
 
         duck = Tool(
             name="duckduckgo",
-            description="A wrapper around DuckDuckGo Search. Useful for answering questions about current events or latest web insights. Input should be a search query.",
+            description="Search the web for current events, recent news, or general web content. Use when Wikipedia and Arxiv don't have the answer. Input should be a specific search query.",
             func=safe_duck_run,
             args_schema=SearchInput
         )
         tools.append(duck)
     except Exception as e:
-        logger.warning(f"Skipping DuckDuckGO Search: {e}")
-    return tools
+        logger.warning(f"Skipping DuckDuckGo Search: {e}")
 
+    return tools
 
 # ── Supabase Retriever  ────────────────
 

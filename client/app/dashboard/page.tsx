@@ -723,7 +723,7 @@ export default function DashboardPage() {
                           onChange={(e) => setTopicInput(e.target.value)}
                         />
                         <p className="text-xs text-muted-foreground">
-                          Study Buddy will use AI to generate quizzes and answer questions about this topic.
+                          Study Buddy will use AI to generate summaries, quizzes and answer questions about this topic.
                         </p>
                       </div>
                       <Button

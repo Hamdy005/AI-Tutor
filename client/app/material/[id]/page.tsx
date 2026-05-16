@@ -317,14 +317,11 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
     requestedTab === 'summary' || requestedTab === 'chat' || requestedTab === 'quiz'
       ? requestedTab
       : null
-  const resolvedTab = isTopic
-    ? normalizedRequestedTab === 'quiz' ? 'quiz' : 'chat'
-    : normalizedRequestedTab ?? 'summary'
+  const resolvedTab = normalizedRequestedTab ?? 'summary'
 
   const handleTabChange = (value: string) => {
-    const nextTab = isTopic && value === 'summary' ? 'chat' : value
-    if (nextTab === resolvedTab) return
-    router.replace(`${pathname}?tab=${nextTab}`, { scroll: false })
+    if (value === resolvedTab) return
+    router.replace(`${pathname}?tab=${value}`, { scroll: false })
   }
 
   useEffect(() => {
@@ -443,13 +440,11 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
         </div>
 
         <Tabs value={resolvedTab} onValueChange={handleTabChange} className="mt-6">
-          <TabsList className={`grid w-full ${isTopic ? 'grid-cols-2' : 'grid-cols-3'}`}>
-            {!isTopic && (
-              <TabsTrigger value="summary" className="gap-2 hover:bg-primary/5 transition-colors">
-                <Sparkles className="h-4 w-4" />
-                <span className="hidden sm:inline">Summary</span>
-              </TabsTrigger>
-            )}
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="summary" className="gap-2 hover:bg-primary/5 transition-colors">
+              <Sparkles className="h-4 w-4" />
+              <span className="hidden sm:inline">Summary</span>
+            </TabsTrigger>
             <TabsTrigger value="chat" className="gap-2 hover:bg-primary/5 transition-colors">
               <MessageSquare className="h-4 w-4" />
               <span className="hidden sm:inline">Chat</span>
@@ -460,18 +455,16 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
             </TabsTrigger>
           </TabsList>
 
-          {!isTopic && (
-            <TabsContent value="summary" forceMount className="mt-6">
-              <SummaryTab
-                materialId={id}
-                sourceType={material.source_type}
-                materialTitle={material.title}
-                isGenerating={isGeneratingSummary}
-                setIsGenerating={setIsGeneratingSummary}
-                onTabChange={handleTabChange}
-              />
-            </TabsContent>
-          )}
+          <TabsContent value="summary" forceMount className="mt-6">
+            <SummaryTab
+              materialId={id}
+              sourceType={material.source_type}
+              materialTitle={material.title}
+              isGenerating={isGeneratingSummary}
+              setIsGenerating={setIsGeneratingSummary}
+              onTabChange={handleTabChange}
+            />
+          </TabsContent>
 
           <TabsContent value="chat" forceMount className="mt-6">
             <ChatTab materialId={id} sourceType={material.source_type} topic={material.topic} materialTitle={material.title} />
@@ -561,11 +554,6 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
   }
 
   useEffect(() => {
-    if (sourceType === 'topic') {
-      setIsLoadingExisting(false)
-      return
-    }
-
     const checkStatus = async () => {
       // 1. Check if we should be generating (from localStorage)
       const wasGenerating = localStorage.getItem(`generating_summary_${materialId}`) === 'true'
@@ -602,11 +590,6 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
   }, [materialId, sourceType])
 
   const generateSummary = async () => {
-    if (sourceType === 'topic') {
-      toast.error('Summaries are not available for custom topics. Try Chat or Quiz instead.')
-      return
-    }
-
     setIsLoadingExisting(false)
     setIsGenerating(true)
     localStorage.setItem(`generating_summary_${materialId}`, 'true')
@@ -688,34 +671,6 @@ function SummaryTab({ materialId, sourceType, materialTitle, isGenerating, setIs
       })
       .join('')
     printAsPDF(`Summary - ${materialTitle}`, html)
-  }
-
-  if (sourceType === 'topic') {
-    return (
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-        <Card className="text-center py-12">
-          <CardContent>
-            <div className="w-16 h-16 mx-auto bg-muted rounded-2xl flex items-center justify-center mb-6">
-              <Sparkles className="w-8 h-8 text-muted-foreground" />
-            </div>
-            <h3 className="text-xl font-semibold text-foreground mb-2">Summary Not Available</h3>
-            <p className="text-muted-foreground mb-4 max-w-md mx-auto">
-              Custom topics don't include source material to summarize. Try the Chat tab to discuss this topic or generate a Quiz to test your knowledge.
-            </p>
-            <div className="flex gap-3 justify-center">
-              <Button variant="outline" onClick={() => onTabChange('chat')}>
-                <MessageSquare className="mr-2 h-4 w-4" />
-                Chat About It
-              </Button>
-              <Button onClick={() => onTabChange('quiz')}>
-                <Brain className="mr-2 h-4 w-4" />
-                Take a Quiz
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-    )
   }
 
   if (isLoadingExisting && !summary && !isGenerating) {

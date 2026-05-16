@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 
-from src.summary_generator.summary import summarizer
+from src.summary_generator.summary import summarizer, web_summarizer
 from src.store import get_material, get_chunks, save_summary, get_summary as get_stored_summary, check_and_increment_daily_limit
 from src.dependencies import get_current_user_id, get_current_user
 from src.config import settings
@@ -37,15 +37,20 @@ async def generate_summary(
     if not mat:
         raise HTTPException(404, "Material not found")
 
-    chunks_list = get_chunks(body.material_id)
-    if not chunks_list:
-        raise HTTPException(400, "No text chunks found in this material")
-
     try:
-        combined = "\n".join(c["content"] for c in chunks_list)
         start = time.time()
         loop = asyncio.get_event_loop()
-        summary = await loop.run_in_executor(None, summarizer, combined)
+
+        if mat.get("source_type") == "topic":
+            topic_title = mat.get("title", "topic")
+            summary = await loop.run_in_executor(None, web_summarizer, topic_title)
+        else:
+            chunks_list = get_chunks(body.material_id)
+            if not chunks_list:
+                raise HTTPException(400, "No text chunks found in this material")
+            combined = "\n".join(c["content"] for c in chunks_list)
+            summary = await loop.run_in_executor(None, summarizer, combined)
+
         elapsed = time.time() - start
 
         save_summary(

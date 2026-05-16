@@ -1,6 +1,7 @@
 import re
 import logging
 from langchain.prompts import PromptTemplate
+from langchain_community.utilities import ArxivAPIWrapper, WikipediaAPIWrapper
 from src.rag.rag import get_llm
 
 logger = logging.getLogger(__name__)
@@ -84,3 +85,33 @@ def summarizer(text: str) -> str:
     except Exception as e:
         logger.error(f"Summarizer failed: {str(e)}", exc_info=True)
         raise
+
+
+def web_summarizer(topic: str) -> str:
+    logger.info(f"Web summarizer started for topic: {topic}")
+
+    all_content = []
+
+    try:
+        wiki_api = WikipediaAPIWrapper(top_k_results=2, doc_content_chars_max=6000)
+        wiki_content = wiki_api.run(topic)
+        if wiki_content and wiki_content.strip():
+            all_content.append(f"--- Wikipedia ---\n{wiki_content}")
+    except Exception as e:
+        logger.warning(f"Wikipedia search for '{topic}' failed: {e}")
+
+    try:
+        arxiv_api = ArxivAPIWrapper(top_k_results=1, doc_content_chars_max=7000)
+        arxiv_content = arxiv_api.run(topic)
+        if arxiv_content and arxiv_content.strip():
+            all_content.append(f"--- Arxiv ---\n{arxiv_content}")
+    except Exception as e:
+        logger.warning(f"Arxiv search for '{topic}' failed: {e}")
+
+    if not all_content:
+        raise ValueError(f"No content found for topic: {topic}")
+
+    combined = "\n\n".join(all_content)
+    logger.info(f"Web search combined text length for topic '{topic}': {len(combined)}")
+
+    return summarizer(combined)
