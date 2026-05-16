@@ -7,7 +7,8 @@
 </strong>
 </p>
 
-AI Tutor is a Next.js AI tutor powered by FastAPI and Supabase. Upload PDFs and URLs to generate structured summaries, multi-session chat, and custom quizzes. Custom topics use web search through Wikipedia, ArXiv, and DuckDuckGo.
+--- 
+Study Buddy is a Next.js AI tutor powered by FastAPI and Supabase. Upload PDFs and URLs to generate structured summaries, multi-session chat, and custom quizzes. Custom topics use web search through Wikipedia, ArXiv, and DuckDuckGo.
 
 ---
 
